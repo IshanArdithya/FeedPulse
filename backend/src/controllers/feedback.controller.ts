@@ -8,6 +8,7 @@ import {
   getFeedbackById,
   getFeedbackSummary,
   listFeedback,
+  requestFeedbackSummaryRefresh,
   rerunFeedbackAnalysis,
   updateFeedbackStatus,
 } from "../services/feedback.service";
@@ -73,7 +74,7 @@ export const deleteFeedbackController = asyncHandler(async (req: Request, res: R
 
 export const summaryController = asyncHandler(async (_req: Request, res: Response) => {
   const data = await getFeedbackSummary();
-  res.status(200).json(successResponse(data, "Summary generated successfully"));
+  res.status(200).json(successResponse(data, "Summary fetched successfully"));
 });
 
 export const rerunAnalysisController = asyncHandler(async (req: Request, res: Response) => {
@@ -82,3 +83,7 @@ export const rerunAnalysisController = asyncHandler(async (req: Request, res: Re
   res.status(200).json(successResponse(data, "Gemini analysis re-run successfully"));
 });
 
+export const refreshSummaryController = asyncHandler(async (_req: Request, res: Response) => {
+  const data = await requestFeedbackSummaryRefresh();
+  res.status(200).json(successResponse(data, data.started ? "Summary refresh started" : "Summary refresh not started"));
+});

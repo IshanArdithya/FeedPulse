@@ -1,7 +1,12 @@
 import { HttpError } from "../lib/http-error";
 import { logError } from "../lib/logger";
 import { FeedbackModel } from "../models/feedback.model";
-import type { FeedbackCategory, FeedbackStatus } from "../types/feedback";
+import { FeedbackSummaryModel } from "../models/feedback-summary.model";
+import type {
+  FeedbackCategory,
+  FeedbackStatus,
+  FeedbackSummaryStatus,
+} from "../types/feedback";
 import { cleanText, normalizeCategory } from "../utils/normalizers";
 import { parsePositiveInt } from "../utils/query";
 import { analyzeFeedback, generateWeeklySummary } from "./gemini.service";
@@ -55,6 +60,21 @@ type FeedbackQuery = {
   search?: unknown;
   sortBy?: unknown;
   sortOrder?: unknown;
+};
+
+const WEEKLY_SUMMARY_KEY = "last-7-days";
+const SUMMARY_STALE_AFTER_MS = 15 * 60 * 1000;
+const SUMMARY_REFRESH_COOLDOWN_MS = 60 * 1000;
+
+type SummaryWindow = {
+  periodStart: Date;
+  periodEnd: Date;
+};
+
+type RecentFeedbackSnapshot = {
+  items: Awaited<ReturnType<typeof getRecentFeedbackForSummary>>;
+  latestFeedbackAt: Date | null;
+  feedbackCount: number;
 };
 
 export async function listFeedback(query: FeedbackQuery) {
@@ -133,6 +153,226 @@ export async function listFeedback(query: FeedbackQuery) {
   };
 }
 
+function getRollingWindow(): SummaryWindow {
+  const periodEnd = new Date();
+  const periodStart = new Date(periodEnd);
+  periodStart.setDate(periodStart.getDate() - 7);
+
+  return { periodStart, periodEnd };
+}
+
+async function getRecentFeedbackForSummary(window = getRollingWindow()) {
+  return FeedbackModel.find({
+    createdAt: { $gte: window.periodStart },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+}
+
+function isSameWindow(
+  storedStart?: Date | null,
+  storedEnd?: Date | null,
+  currentWindow?: SummaryWindow,
+) {
+  if (!storedStart || !storedEnd || !currentWindow) {
+    return false;
+  }
+
+  return (
+    Math.abs(storedStart.getTime() - currentWindow.periodStart.getTime()) < 1000 &&
+    Math.abs(storedEnd.getTime() - currentWindow.periodEnd.getTime()) < 1000
+  );
+}
+
+function isSummaryFresh({
+  generatedAt,
+  lastFeedbackAt,
+  summaryPeriodStart,
+  summaryPeriodEnd,
+  currentWindow,
+  latestFeedbackAt,
+}: {
+  generatedAt?: Date | null;
+  lastFeedbackAt?: Date | null;
+  summaryPeriodStart?: Date | null;
+  summaryPeriodEnd?: Date | null;
+  currentWindow: SummaryWindow;
+  latestFeedbackAt: Date | null;
+}) {
+  if (!generatedAt) {
+    return false;
+  }
+
+  if (!isSameWindow(summaryPeriodStart, summaryPeriodEnd, currentWindow)) {
+    return false;
+  }
+
+  if (Date.now() - generatedAt.getTime() > SUMMARY_STALE_AFTER_MS) {
+    return false;
+  }
+
+  if (!latestFeedbackAt) {
+    return true;
+  }
+
+  if (!lastFeedbackAt) {
+    return false;
+  }
+
+  return lastFeedbackAt.getTime() >= latestFeedbackAt.getTime();
+}
+
+function mapRefreshStatus(status?: FeedbackSummaryStatus) {
+  return status ?? "idle";
+}
+
+async function tryStartSummaryRefresh(force = false) {
+  const now = new Date();
+
+  const existing = await FeedbackSummaryModel.findOne({ key: WEEKLY_SUMMARY_KEY }).lean();
+
+  if (
+    existing?.refreshInProgress
+  ) {
+    return {
+      started: false,
+      alreadyRefreshing: true,
+      cooldownUntil: existing.lastRefreshAttemptAt
+        ? new Date(existing.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS)
+        : undefined,
+    };
+  }
+
+  if (
+    !force &&
+    existing?.lastRefreshAttemptAt &&
+    now.getTime() - existing.lastRefreshAttemptAt.getTime() < SUMMARY_REFRESH_COOLDOWN_MS
+  ) {
+    return {
+      started: false,
+      alreadyRefreshing: false,
+      cooldownUntil: new Date(
+        existing.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS,
+      ),
+    };
+  }
+
+  const lock = await FeedbackSummaryModel.findOneAndUpdate(
+    {
+      key: WEEKLY_SUMMARY_KEY,
+      refreshInProgress: { $ne: true },
+      ...(force
+        ? {}
+        : {
+            $or: [
+              { lastRefreshAttemptAt: { $exists: false } },
+              {
+                lastRefreshAttemptAt: {
+                  $lte: new Date(now.getTime() - SUMMARY_REFRESH_COOLDOWN_MS),
+                },
+              },
+            ],
+          }),
+    },
+    {
+      $setOnInsert: { key: WEEKLY_SUMMARY_KEY },
+      $set: {
+        refreshInProgress: true,
+        lastRefreshAttemptAt: now,
+      },
+    },
+    {
+      upsert: true,
+      returnDocument: "after",
+    },
+  ).lean();
+
+  if (!lock?.refreshInProgress) {
+    return {
+      started: false,
+      alreadyRefreshing: Boolean(existing?.refreshInProgress),
+      cooldownUntil: existing?.lastRefreshAttemptAt
+        ? new Date(existing.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS)
+        : undefined,
+    };
+  }
+
+  return {
+    started: true,
+    alreadyRefreshing: false,
+    cooldownUntil: undefined,
+  };
+}
+
+async function performSummaryRefresh() {
+  const window = getRollingWindow();
+  const recentItems = await getRecentFeedbackForSummary(window);
+  const latestFeedbackAt = recentItems[0]?.createdAt ?? null;
+
+  try {
+    const generated = await generateWeeklySummary(recentItems);
+
+    await FeedbackSummaryModel.findOneAndUpdate(
+      { key: WEEKLY_SUMMARY_KEY },
+      {
+        $set: {
+          key: WEEKLY_SUMMARY_KEY,
+          periodStart: window.periodStart,
+          periodEnd: window.periodEnd,
+          feedbackCount: recentItems.length,
+          summary: generated.summary,
+          themes: generated.themes,
+          generatedAt: new Date(),
+          lastFeedbackAt: latestFeedbackAt,
+          refreshInProgress: false,
+          lastRefreshStatus: "success",
+          lastRefreshError: null,
+        },
+      },
+      {
+        upsert: true,
+      },
+    );
+  } catch (error) {
+    logError("Weekly summary refresh failed", error);
+
+    await FeedbackSummaryModel.findOneAndUpdate(
+      { key: WEEKLY_SUMMARY_KEY },
+      {
+        $set: {
+          refreshInProgress: false,
+          lastRefreshStatus: "failed",
+          lastRefreshError: error instanceof Error ? error.message : "Unknown summary refresh error",
+        },
+      },
+      { upsert: true },
+    );
+  }
+}
+
+function launchSummaryRefresh(force = false) {
+  if (process.env.NODE_ENV === "test") {
+    return;
+  }
+
+  void tryStartSummaryRefresh(force).then((result) => {
+    if (result.started) {
+      void performSummaryRefresh();
+    }
+  });
+}
+
+async function getSummarySnapshot(): Promise<RecentFeedbackSnapshot> {
+  const window = getRollingWindow();
+  const items = await getRecentFeedbackForSummary(window);
+
+  return {
+    items,
+    latestFeedbackAt: items[0]?.createdAt ?? null,
+    feedbackCount: items.length,
+  };
+}
+
 export async function getFeedbackById(id: string) {
   const feedback = await FeedbackModel.findById(id).lean();
 
@@ -196,21 +436,66 @@ export async function rerunFeedbackAnalysis(id: string) {
 }
 
 export async function getFeedbackSummary() {
-  const since = new Date();
-  since.setDate(since.getDate() - 7);
+  const currentWindow = getRollingWindow();
+  const [storedSummary, snapshot] = await Promise.all([
+    FeedbackSummaryModel.findOne({ key: WEEKLY_SUMMARY_KEY }).lean(),
+    getSummarySnapshot(),
+  ]);
 
-  const recentItems = await FeedbackModel.find({
-    createdAt: { $gte: since },
-  })
-    .sort({ createdAt: -1 })
-    .lean();
+  const generatedAt = storedSummary?.generatedAt ? new Date(storedSummary.generatedAt) : null;
+  const lastFeedbackAt = storedSummary?.lastFeedbackAt
+    ? new Date(storedSummary.lastFeedbackAt)
+    : null;
+  const periodStart = storedSummary?.periodStart ? new Date(storedSummary.periodStart) : null;
+  const periodEnd = storedSummary?.periodEnd ? new Date(storedSummary.periodEnd) : null;
 
-  const summary = await generateWeeklySummary(recentItems);
+  const isMissing = !storedSummary?.summary;
+  const isFresh = isSummaryFresh({
+    generatedAt,
+    lastFeedbackAt,
+    summaryPeriodStart: periodStart,
+    summaryPeriodEnd: periodEnd,
+    currentWindow,
+    latestFeedbackAt: snapshot.latestFeedbackAt,
+  });
+  const isStale = !isMissing && !isFresh;
+  const isRefreshing = Boolean(storedSummary?.refreshInProgress);
+  const refreshRecommended = isMissing || isStale;
+
+  const cooldownUntil = storedSummary?.lastRefreshAttemptAt
+    ? new Date(storedSummary.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS)
+    : null;
+  const withinCooldown =
+    cooldownUntil !== null && cooldownUntil.getTime() > Date.now();
+
+  if (refreshRecommended && !isRefreshing && !withinCooldown) {
+    launchSummaryRefresh(false);
+  }
 
   return {
-    periodStart: since,
-    periodEnd: new Date(),
-    feedbackCount: recentItems.length,
-    ...summary,
+    summary: storedSummary?.summary ?? "",
+    themes: storedSummary?.themes ?? [],
+    feedbackCount: storedSummary?.feedbackCount ?? snapshot.feedbackCount,
+    periodStart: storedSummary?.periodStart ?? currentWindow.periodStart,
+    periodEnd: storedSummary?.periodEnd ?? currentWindow.periodEnd,
+    generatedAt: storedSummary?.generatedAt ?? null,
+    lastFeedbackAt: storedSummary?.lastFeedbackAt ?? snapshot.latestFeedbackAt,
+    isMissing,
+    isStale,
+    isRefreshing,
+    refreshRecommended,
+    lastRefreshStatus: mapRefreshStatus(storedSummary?.lastRefreshStatus),
+    lastRefreshError: storedSummary?.lastRefreshError ?? null,
+    cooldownUntil: withinCooldown ? cooldownUntil : null,
   };
+}
+
+export async function requestFeedbackSummaryRefresh() {
+  const result = await tryStartSummaryRefresh(true);
+
+  if (result.started && process.env.NODE_ENV !== "test") {
+    void performSummaryRefresh();
+  }
+
+  return result;
 }

@@ -19,6 +19,10 @@ export async function disconnectDatabase() {
     return;
   }
 
-  await mongoose.disconnect();
-  isConnected = false;
+  try {
+    await mongoose.disconnect();
+  } catch {
+  } finally {
+    isConnected = false;
+  }
 }

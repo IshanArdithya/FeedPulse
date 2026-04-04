@@ -3,6 +3,7 @@ import type {
   FeedbackItem,
   FeedbackListResponse,
   FeedbackSummaryResponse,
+  SummaryRefreshResponse,
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
@@ -79,6 +80,15 @@ export async function getFeedbackSummary(token: string) {
   });
 }
 
+export async function refreshFeedbackSummary(token: string) {
+  return request<SummaryRefreshResponse>("/feedback/summary/refresh", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function reanalyzeFeedback(token: string, id: string) {
   return request<FeedbackItem>(`/feedback/${id}/reanalyze`, {
     method: "POST",
@@ -87,4 +97,3 @@ export async function reanalyzeFeedback(token: string, id: string) {
     },
   });
 }
-

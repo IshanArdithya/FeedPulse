@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   getFeedbackList,
   getFeedbackSummary,
+  refreshFeedbackSummary,
   reanalyzeFeedback,
   updateFeedbackStatus,
 } from "@/lib/api";
@@ -41,6 +42,7 @@ export function DashboardClient() {
   const [summary, setSummary] = useState<FeedbackSummaryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState({
     page: 1,
@@ -50,6 +52,12 @@ export function DashboardClient() {
     sortBy: "date",
     sortOrder: "desc",
   });
+
+  async function loadSummary(tokenValue: string) {
+    const response = await getFeedbackSummary(tokenValue);
+    setSummary(response.data);
+    return response.data;
+  }
 
   useEffect(() => {
     const storedToken = getAdminToken();
@@ -67,11 +75,10 @@ export function DashboardClient() {
       return;
     }
 
-    async function loadDashboard() {
+    async function loadFeedback() {
       const currentToken = token as string;
       setIsLoading(true);
       setError(null);
-      setSummaryError(null);
 
       try {
         const query = new URLSearchParams({
@@ -84,27 +91,8 @@ export function DashboardClient() {
           sortOrder: filters.sortOrder,
         });
 
-        const [feedbackResult, summaryResult] = await Promise.allSettled([
-          getFeedbackList(currentToken, query),
-          getFeedbackSummary(currentToken),
-        ]);
-
-        if (feedbackResult.status === "rejected") {
-          throw feedbackResult.reason;
-        }
-
-        setFeedbackData(feedbackResult.value.data);
-
-        if (summaryResult.status === "fulfilled") {
-          setSummary(summaryResult.value.data);
-        } else {
-          setSummary(null);
-          setSummaryError(
-            summaryResult.reason instanceof Error
-              ? summaryResult.reason.message
-              : "Weekly summary is temporarily unavailable.",
-          );
-        }
+        const feedbackResponse = await getFeedbackList(currentToken, query);
+        setFeedbackData(feedbackResponse.data);
       } catch (loadError) {
         const message =
           loadError instanceof Error
@@ -121,8 +109,49 @@ export function DashboardClient() {
       }
     }
 
-    void loadDashboard();
+    void loadFeedback();
   }, [filters, router, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let pollingTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    async function fetchSummary() {
+      const currentToken = token as string;
+      setIsSummaryLoading(true);
+      setSummaryError(null);
+
+      try {
+        const summaryData = await loadSummary(currentToken);
+
+        if (summaryData.isRefreshing) {
+          pollingTimeout = setTimeout(() => {
+            void fetchSummary();
+          }, 2500);
+        }
+      } catch (loadError) {
+        setSummary(null);
+        setSummaryError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Weekly summary is temporarily unavailable.",
+        );
+      } finally {
+        setIsSummaryLoading(false);
+      }
+    }
+
+    void fetchSummary();
+
+    return () => {
+      if (pollingTimeout) {
+        clearTimeout(pollingTimeout);
+      }
+    };
+  }, [token]);
 
   async function handleStatusChange(
     item: FeedbackItem,
@@ -171,6 +200,46 @@ export function DashboardClient() {
         reanalyzeError instanceof Error
           ? reanalyzeError.message
           : "Re-analysis failed",
+      );
+    }
+  }
+
+  async function handleRefreshSummary() {
+    if (!token) {
+      return;
+    }
+
+    setSummaryError(null);
+
+    try {
+      const response = await refreshFeedbackSummary(token);
+
+      if (response.data.started || response.data.alreadyRefreshing) {
+        setIsSummaryLoading(false);
+
+        const summaryData = await loadSummary(token);
+
+        if (summaryData.isRefreshing) {
+          const poll = async () => {
+            const nextSummary = await loadSummary(token);
+
+            if (nextSummary.isRefreshing) {
+              setTimeout(() => {
+                void poll();
+              }, 2500);
+            }
+          };
+
+          setTimeout(() => {
+            void poll();
+          }, 2500);
+        }
+      }
+    } catch (refreshError) {
+      setSummaryError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : "Could not refresh summary.",
       );
     }
   }
@@ -246,7 +315,26 @@ export function DashboardClient() {
         </section>
       ) : null}
 
-      {summary ? (
+      {isSummaryLoading && !summary ? (
+        <section className="panel-dark space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow !text-white/60">Last 7 days</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                Generating summary...
+              </h2>
+            </div>
+            <span className="mono-kicker !border-white/15 !text-white/70">
+              Preparing AI snapshot
+            </span>
+          </div>
+          <div className="space-y-3">
+            <div className="h-4 w-full rounded-full bg-white/10" />
+            <div className="h-4 w-11/12 rounded-full bg-white/10" />
+            <div className="h-4 w-10/12 rounded-full bg-white/10" />
+          </div>
+        </section>
+      ) : summary ? (
         <section className="panel-dark space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -255,12 +343,24 @@ export function DashboardClient() {
                 AI trend summary
               </h2>
             </div>
-            <span className="mono-kicker !border-white/15 !text-white/70">
-              {summary.feedbackCount} items analyzed
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mono-kicker !border-white/15 !text-white/70">
+                {summary.feedbackCount} items analyzed
+              </span>
+              {summary.isRefreshing ? (
+                <span className="mono-kicker !border-white/15 !text-white/70">
+                  Refreshing...
+                </span>
+              ) : null}
+              {summary.isStale && !summary.isRefreshing ? (
+                <span className="mono-kicker !border-white/15 !text-white/70">
+                  Stale
+                </span>
+              ) : null}
+            </div>
           </div>
           <p className="max-w-5xl text-sm leading-8 text-white/78 md:text-base">
-            {summary.summary}
+            {summary.summary || "A stored summary is not available yet."}
           </p>
           <div className="flex flex-wrap gap-2">
             {summary.themes.map((theme) => (
@@ -271,6 +371,27 @@ export function DashboardClient() {
                 {theme.theme} ({theme.count})
               </span>
             ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 surface-rule pt-5">
+            <div className="text-sm text-white/65">
+              {summary.lastRefreshStatus === "failed"
+                ? "Couldn’t refresh, showing the last available summary."
+                : summary.isRefreshing
+                  ? "Generating an updated summary in the background."
+                  : summary.generatedAt
+                    ? `Last generated ${new Intl.DateTimeFormat("en-US", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(summary.generatedAt))}`
+                    : "Summary not generated yet."}
+            </div>
+            <button
+              className="button-secondary"
+              onClick={handleRefreshSummary}
+              type="button"
+            >
+              Refresh summary
+            </button>
           </div>
         </section>
       ) : summaryError ? (

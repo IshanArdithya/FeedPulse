@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import request from "supertest";
 import { createApp } from "../app";
 import { env } from "../config/env";
+import { FeedbackSummaryModel } from "../models/feedback-summary.model";
 import { FeedbackModel } from "../models/feedback.model";
 import { connectToDatabase } from "../services/database.service";
 
@@ -32,6 +33,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await FeedbackModel.deleteMany({});
+  await FeedbackSummaryModel.deleteMany({});
 });
 
 describe("feedback api", () => {
@@ -82,7 +84,7 @@ describe("feedback api", () => {
     expect(response.status).toBe(401);
   });
 
-  it("GET /api/feedback/summary returns trend data", async () => {
+  it("GET /api/feedback/summary returns stored trend data and freshness flags", async () => {
     await FeedbackModel.create({
       title: "Need faster search",
       description: "The search results should load faster when we look through support conversations.",
@@ -93,6 +95,22 @@ describe("feedback api", () => {
       ai_sentiment: "Negative",
       ai_processed: true,
     });
+    await FeedbackSummaryModel.create({
+      key: "last-7-days",
+      periodStart: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 + 500),
+      periodEnd: new Date(Date.now() - 500),
+      feedbackCount: 1,
+      summary: "The top themes are UI polish, analytics, and faster workflows.",
+      themes: [
+        { theme: "UI polish", count: 3 },
+        { theme: "Analytics", count: 2 },
+      ],
+      generatedAt: new Date(),
+      lastFeedbackAt: new Date(),
+      refreshInProgress: false,
+      lastRefreshAttemptAt: new Date(),
+      lastRefreshStatus: "success",
+    });
 
     const response = await request(app)
       .get("/api/feedback/summary")
@@ -100,6 +118,16 @@ describe("feedback api", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.summary).toContain("top themes");
+    expect(response.body.data.isRefreshing).toBe(false);
+    expect(response.body.data.lastRefreshStatus).toBe("success");
+  });
+
+  it("POST /api/feedback/summary/refresh starts a manual refresh", async () => {
+    const response = await request(app)
+      .post("/api/feedback/summary/refresh")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(typeof response.body.data.started).toBe("boolean");
   });
 });
-

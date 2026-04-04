@@ -42,6 +42,21 @@ export type FeedbackSummaryResponse = {
   feedbackCount: number;
   periodStart: string;
   periodEnd: string;
+  generatedAt: string | null;
+  lastFeedbackAt: string | null;
+  isMissing: boolean;
+  isStale: boolean;
+  isRefreshing: boolean;
+  refreshRecommended: boolean;
+  lastRefreshStatus: "idle" | "success" | "failed";
+  lastRefreshError: string | null;
+  cooldownUntil: string | null;
+};
+
+export type SummaryRefreshResponse = {
+  started: boolean;
+  alreadyRefreshing: boolean;
+  cooldownUntil?: string;
 };
 
 export type ApiEnvelope<T> = {
@@ -50,4 +65,3 @@ export type ApiEnvelope<T> = {
   error: string | null;
   message: string;
 };
-

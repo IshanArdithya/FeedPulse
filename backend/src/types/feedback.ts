@@ -26,3 +26,4 @@ export type FeedbackSummaryTheme = {
   count: number;
 };
 
+export type FeedbackSummaryStatus = "idle" | "success" | "failed";
