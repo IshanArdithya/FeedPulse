@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-white px-5 py-5 md:px-8 md:py-8">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-10">
-        <header className="panel flex flex-wrap items-center justify-between gap-4 px-5 py-4 md:px-6">
+        <header className="panel sticky top-5 md:top-8 z-50 flex flex-wrap items-center justify-between gap-4 px-5 py-4 md:px-6 shadow-xl shadow-black/2 backdrop-blur-md! bg-white/80!">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black text-sm font-bold text-white">
               FP
@@ -43,7 +43,7 @@ export default function Home() {
         {/* Two Column Section */}
         <section className="grid gap-8 lg:grid-cols-[1fr_1fr] items-start pb-16">
           {/* Left Side: Benefits */}
-          <section className="panel flex flex-col gap-8 p-6 md:p-10 sticky top-8">
+          <section className="panel flex flex-col gap-8 p-6 md:p-10">
             <div className="space-y-4">
               <h2 className="text-3xl font-semibold tracking-tight text-(--ink)">
                 Why your feedback matters
