@@ -661,6 +661,15 @@ export function DashboardClient() {
                           >
                             {item.ai_sentiment ?? "Analyzing..."}
                           </span>
+                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap mt-1">
+                            <span className={`h-2 w-2 rounded-full ${(item.ai_priority ?? 0) > 7 ? "bg-red-500" :
+                              (item.ai_priority ?? 0) > 4 ? "bg-amber-500" :
+                                "bg-emerald-500"
+                              }`} />
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-(--ink)">
+                              Priority {item.ai_priority ?? "-"}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="py-6 pr-5 align-top">
