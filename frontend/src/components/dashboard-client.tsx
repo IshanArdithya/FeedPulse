@@ -185,28 +185,52 @@ export function DashboardClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="eyebrow">Admin Dashboard</p>
-          <h1 className="text-3xl font-semibold text-[var(--ink)]">
-            Feedback intelligence
-          </h1>
+      <section className="panel grid gap-6 p-6 md:grid-cols-[1.15fr_0.85fr] md:p-8">
+        <div className="space-y-6">
+          <div className="flex flex-wrap gap-3">
+            <span className="mono-kicker">Admin dashboard</span>
+            <span className="mono-kicker">Review workspace</span>
+          </div>
+          <div className="space-y-4">
+            <p className="eyebrow">Feedback intelligence</p>
+            <h1 className="text-4xl font-semibold tracking-tight text-[var(--ink)] md:text-5xl">
+              Review signals, not just submissions.
+            </h1>
+            <p className="subheading max-w-2xl">
+              Filter feedback, review AI interpretation, move items through the
+              workflow, and spot what keeps appearing across the last week of
+              product input.
+            </p>
+          </div>
         </div>
-        <button
-          className="button-secondary"
-          onClick={() => {
-            clearAdminToken();
-            router.push("/admin");
-          }}
-          type="button"
-        >
-          Log out
-        </button>
-      </div>
+
+        <div className="flex flex-col justify-between gap-4">
+          <div className="metric-card-dark">
+            <p className="eyebrow !text-white/60">Session</p>
+            <p className="mt-3 text-2xl font-semibold text-white">
+              Product review mode
+            </p>
+            <p className="mt-2 text-sm leading-7 text-white/70">
+              You are signed in with admin access and can update status or rerun AI analysis.
+            </p>
+          </div>
+          <button
+            className="button-secondary w-fit"
+            onClick={() => {
+              clearAdminToken();
+              router.push("/admin");
+            }}
+            type="button"
+          >
+            Log out
+          </button>
+        </div>
+      </section>
 
       {feedbackData ? (
-        <div className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
+            tone="dark"
             label="Total feedback"
             value={String(feedbackData.stats.totalFeedback)}
           />
@@ -219,26 +243,31 @@ export function DashboardClient() {
             value={String(feedbackData.stats.averagePriority)}
           />
           <StatCard label="Top tag" value={feedbackData.stats.mostCommonTag} />
-        </div>
+        </section>
       ) : null}
 
       {summary ? (
-        <section className="panel space-y-3">
-          <div className="flex items-center justify-between gap-3">
+        <section className="panel-dark space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="eyebrow">Last 7 days</p>
-              <h2 className="text-xl font-semibold text-[var(--ink)]">
+              <p className="eyebrow !text-white/60">Last 7 days</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
                 AI trend summary
               </h2>
             </div>
-            <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-sm font-medium text-[var(--ink)]">
-              {summary.feedbackCount} items
+            <span className="mono-kicker !border-white/15 !text-white/70">
+              {summary.feedbackCount} items analyzed
             </span>
           </div>
-          <p className="text-[var(--muted-strong)]">{summary.summary}</p>
+          <p className="max-w-5xl text-sm leading-8 text-white/78 md:text-base">
+            {summary.summary}
+          </p>
           <div className="flex flex-wrap gap-2">
             {summary.themes.map((theme) => (
-              <span className="tag" key={theme.theme}>
+              <span
+                className="rounded-full border border-white/15 px-4 py-2 text-sm text-white/78"
+                key={theme.theme}
+              >
                 {theme.theme} ({theme.count})
               </span>
             ))}
@@ -250,8 +279,20 @@ export function DashboardClient() {
         </section>
       ) : null}
 
-      <section className="panel space-y-4">
-        <div className="grid gap-3 md:grid-cols-5">
+      <section className="panel space-y-6 p-6 md:p-8">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow">Review queue</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--ink)]">
+              All feedback
+            </h2>
+          </div>
+          <p className="max-w-xl text-sm leading-7 text-[var(--muted-strong)]">
+            Use filters to narrow the queue, then update statuses or rerun analysis where more accurate AI context is needed.
+          </p>
+        </div>
+
+        <div className="panel-soft grid gap-3 md:grid-cols-5">
           <label className="field">
             <span>Category</span>
             <select
@@ -324,41 +365,45 @@ export function DashboardClient() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left">
-            <thead className="text-sm uppercase tracking-[0.18em] text-[var(--muted)]">
+          <table className="dashboard-table w-full min-w-[940px] text-left">
+            <thead>
               <tr>
-                <th className="pb-3">Title</th>
-                <th className="pb-3">Category</th>
-                <th className="pb-3">Sentiment</th>
-                <th className="pb-3">Priority</th>
-                <th className="pb-3">Status</th>
-                <th className="pb-3">Created</th>
-                <th className="pb-3">Actions</th>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Sentiment</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {feedbackData?.items.map((item) => (
-                <tr className="border-t border-white/60" key={item._id}>
-                  <td className="py-4 pr-4">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-[var(--ink)]">
+                <tr className="dashboard-row" key={item._id}>
+                  <td className="pr-5">
+                    <div className="space-y-2">
+                      <p className="text-base font-semibold text-[var(--ink)]">
                         {item.title}
                       </p>
-                      <p className="text-sm text-[var(--muted-strong)]">
+                      <p className="max-w-xl text-sm leading-7 text-[var(--muted-strong)]">
                         {item.ai_summary ?? item.description}
                       </p>
                     </div>
                   </td>
-                  <td className="py-4 pr-4">{item.category}</td>
-                  <td className="py-4 pr-4">
+                  <td className="pr-5">
+                    <span className="tag">{item.category}</span>
+                  </td>
+                  <td className="pr-5">
                     <span
                       className={`badge badge-${(item.ai_sentiment ?? "neutral").toLowerCase()}`}
                     >
                       {item.ai_sentiment ?? "Pending"}
                     </span>
                   </td>
-                  <td className="py-4 pr-4">{item.ai_priority ?? "-"}</td>
-                  <td className="py-4 pr-4">
+                  <td className="pr-5 text-base font-semibold text-[var(--ink)]">
+                    {item.ai_priority ?? "-"}
+                  </td>
+                  <td className="pr-5">
                     <select
                       className="table-select"
                       value={item.status}
@@ -378,12 +423,12 @@ export function DashboardClient() {
                         ))}
                     </select>
                   </td>
-                  <td className="py-4 pr-4">
+                  <td className="pr-5 text-sm text-[var(--muted-strong)]">
                     {new Intl.DateTimeFormat("en-US", {
                       dateStyle: "medium",
                     }).format(new Date(item.createdAt))}
                   </td>
-                  <td className="py-4">
+                  <td>
                     <button
                       className="button-tertiary"
                       onClick={() => handleReanalyze(item)}
@@ -399,7 +444,7 @@ export function DashboardClient() {
         </div>
 
         {feedbackData ? (
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-[var(--muted-strong)]">
               Page {feedbackData.pagination.page} of{" "}
               {feedbackData.pagination.totalPages}
@@ -442,11 +487,25 @@ export function DashboardClient() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "dark";
+}) {
   return (
-    <article className="panel">
-      <p className="eyebrow">{label}</p>
-      <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{value}</p>
+    <article className={tone === "dark" ? "metric-card-dark" : "metric-card"}>
+      <p className={`eyebrow ${tone === "dark" ? "!text-white/60" : ""}`}>{label}</p>
+      <p
+        className={`mt-3 text-4xl font-semibold tracking-tight ${
+          tone === "dark" ? "text-white" : "text-[var(--ink)]"
+        }`}
+      >
+        {value}
+      </p>
     </article>
   );
 }

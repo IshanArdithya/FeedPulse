@@ -70,13 +70,24 @@ export function FeedbackForm() {
   }
 
   return (
-    <form className="panel space-y-5" onSubmit={handleSubmit}>
-      <div className="grid gap-5 md:grid-cols-2">
-        <label className="field md:col-span-2">
-          <span>Feedback title</span>
-          <input
-            value={form.title}
-            maxLength={120}
+    <form className="panel space-y-6 p-6 md:p-7" onSubmit={handleSubmit}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="eyebrow">Feedback form</p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--ink)]">
+            Share the issue clearly
+          </h3>
+        </div>
+        <span className="mono-kicker">Step 1 of 1</span>
+      </div>
+
+      <div className="surface-rule pt-6">
+        <div className="grid gap-5 md:grid-cols-2">
+          <label className="field md:col-span-2">
+            <span>Feedback title</span>
+            <input
+              value={form.title}
+              maxLength={120}
             onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
             placeholder="What should the team know right away?"
           />
@@ -141,6 +152,7 @@ export function FeedbackForm() {
           />
           <small>{emailError ?? "Optional, in case the team needs follow-up context."}</small>
         </label>
+        </div>
       </div>
 
       {(message || error) && (
@@ -149,9 +161,14 @@ export function FeedbackForm() {
         </div>
       )}
 
-      <button className="button-primary" disabled={isSubmitting} type="submit">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm leading-7 text-[var(--muted-strong)]">
+          We save your submission instantly, then run AI analysis in the background.
+        </p>
+        <button className="button-primary min-w-[180px]" disabled={isSubmitting} type="submit">
         {isSubmitting ? "Submitting..." : "Submit feedback"}
-      </button>
+        </button>
+      </div>
     </form>
   );
 }

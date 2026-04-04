@@ -30,7 +30,14 @@ export function AdminLoginForm() {
   }
 
   return (
-    <form className="panel space-y-5" onSubmit={handleSubmit}>
+    <form className="panel space-y-6 p-6 md:p-7" onSubmit={handleSubmit}>
+      <div>
+        <p className="eyebrow">Credential check</p>
+        <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--ink)]">
+          Sign in to continue
+        </h3>
+      </div>
+
       <label className="field">
         <span>Admin email</span>
         <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
@@ -47,9 +54,11 @@ export function AdminLoginForm() {
 
       {error ? <div className="notice notice-error">{error}</div> : null}
 
-      <button className="button-primary" disabled={isLoading} type="submit">
+      <div className="surface-rule pt-5">
+        <button className="button-primary w-full" disabled={isLoading} type="submit">
         {isLoading ? "Signing in..." : "Access dashboard"}
-      </button>
+        </button>
+      </div>
     </form>
   );
 }
