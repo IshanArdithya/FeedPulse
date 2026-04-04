@@ -107,12 +107,9 @@ export function DashboardClient() {
   useEffect(() => {
     const storedToken = getAdminToken();
 
-    if (!storedToken) {
-      router.replace("/admin");
-      return;
+    if (storedToken) {
+      setToken(storedToken);
     }
-
-    setToken(storedToken);
   }, [router]);
 
   useEffect(() => {
