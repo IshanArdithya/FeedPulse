@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
 import { cn } from "@/lib/utils";
 
 interface Option {
@@ -31,39 +32,8 @@ export function Select({
   placeholder = "Select an option",
 }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
   const isInvalid = touched && error;
-
   const selectedOption = options.find((opt) => opt.value === value);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-      }
-    }
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-    }
-    return () => {
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [isOpen]);
 
   const handleSelect = (optionValue: string) => {
     onChange(optionValue);
@@ -71,27 +41,36 @@ export function Select({
   };
 
   return (
-    <div className={cn("relative w-full", isOpen ? "z-20" : "z-auto", className)} ref={containerRef}>
-      <button
-        type="button"
-        className={`flex w-full items-center justify-between gap-2 text-left transition-all rounded-[18px] border border-(--line-strong) bg-white px-4 py-[0.95rem] ${
-          isInvalid ? "border-red-500! ring-red-500/10 shadow-red-100!" : ""
-        } ${isOpen ? "ring-4 ring-black/8 border-black!" : "hover:border-(--line-strong)!"} ${className}`}
-        onClick={() => setIsOpen(!isOpen)}
-        onBlur={onBlur}
-      >
-        <span className={!selectedOption ? "text-(--muted)" : "text-(--ink)"}>
-          {selectedOption ? selectedOption.label : placeholder}
-        </span>
-        <ChevronDown
-          className={`h-4 w-4 text-(--muted) transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
-        />
-      </button>
+    <Popover.Root open={isOpen} onOpenChange={setIsOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          onBlur={onBlur}
+          className={cn(
+            "flex w-full items-center justify-between gap-2 text-left transition-all rounded-[18px] border border-(--line-strong) bg-white px-4 py-[0.95rem]",
+            isInvalid && "border-red-500! ring-red-500/10 shadow-red-100!",
+            isOpen ? "ring-4 ring-black/8 border-black!" : "hover:border-(--line-strong)!",
+            className
+          )}
+        >
+          <span className={!selectedOption ? "text-(--muted)" : "text-(--ink)"}>
+            {selectedOption ? selectedOption.label : placeholder}
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 text-(--muted) transition-transform duration-200",
+              isOpen && "rotate-180"
+            )}
+          />
+        </button>
+      </Popover.Trigger>
 
-      {isOpen && (
-        <div className="glass-panel absolute left-0 top-full z-50 mt-2 max-h-60 w-full overflow-auto rounded-2xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+      <Popover.Portal>
+        <Popover.Content
+          sideOffset={8}
+          align="start"
+          className="glass-panel z-50 min-w-(--radix-popover-trigger-width) max-h-60 overflow-auto rounded-2xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-200 focus:outline-none"
+        >
           <div className="flex flex-col gap-0.5">
             {options.map((option) => (
               <button
@@ -108,8 +87,8 @@ export function Select({
               </button>
             ))}
           </div>
-        </div>
-      )}
-    </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
