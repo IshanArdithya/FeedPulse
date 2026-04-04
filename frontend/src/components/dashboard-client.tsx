@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Filter } from "lucide-react";
 import {
   getFeedbackList,
   getFeedbackSummary,
@@ -18,6 +19,18 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogClose,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +65,15 @@ const statuses: Array<FeedbackStatus | "All"> = [
   "Resolved",
 ];
 
+const defaultFilters = {
+  page: 1,
+  category: "All" as const,
+  status: "All" as const,
+  search: "",
+  sortBy: "date",
+  sortOrder: "desc",
+};
+
 export function DashboardClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,25 +87,27 @@ export function DashboardClient() {
   const [isSummaryLoading, setIsSummaryLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
 
   const [filters, setFilters] = useState({
-    page: Number(searchParams.get("page")) || 1,
-    category: searchParams.get("category") || "All",
-    status: searchParams.get("status") || "All",
-    search: searchParams.get("search") || "",
-    sortBy: searchParams.get("sortBy") || "date",
-    sortOrder: searchParams.get("sortOrder") || "desc",
+    page: Number(searchParams.get("page")) || defaultFilters.page,
+    category: searchParams.get("category") || defaultFilters.category,
+    status: searchParams.get("status") || defaultFilters.status,
+    search: searchParams.get("search") || defaultFilters.search,
+    sortBy: searchParams.get("sortBy") || defaultFilters.sortBy,
+    sortOrder: searchParams.get("sortOrder") || defaultFilters.sortOrder,
   });
 
+  const activeFilterCount = [
+    filters.category !== "All",
+    filters.status !== "All",
+    filters.sortBy !== "date" || filters.sortOrder !== "desc",
+  ].filter(Boolean).length;
+
   const handleClearFilters = () => {
-    setFilters({
-      page: 1,
-      category: "All",
-      status: "All",
-      search: "",
-      sortBy: "date",
-      sortOrder: "desc",
-    });
+    setFilters(defaultFilters);
+    setIsMobileFiltersOpen(false);
   };
 
   useEffect(() => {
@@ -473,84 +497,117 @@ export function DashboardClient() {
           </p>
         </div>
 
-        <div className="glass-panel relative z-20 p-4 rounded-2xl grid gap-3 md:grid-cols-5">
-          <Field label="Category">
-            <Select
-              className="bg-white/50!"
-              options={categories.map((c) => ({ label: c, value: c }))}
-              value={filters.category}
-              onChange={(val) =>
-                setFilters((current) => ({
-                  ...current,
-                  page: 1,
-                  category: val,
-                }))
-              }
-            />
-          </Field>
+        <div className="space-y-4">
+          {/* Top Bar: Search and Mobile Filter Toggle */}
+          <div className="flex flex-col md:flex-row gap-3">
+            <Field className="flex-1" label="Search Feedback">
+              <Input
+                className="bg-white/50!"
+                value={filters.search}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    page: 1,
+                    search: event.target.value,
+                  }))
+                }
+                placeholder="Search title or AI context..."
+              />
+            </Field>
 
-          <Field label="Status">
-            <Select
-              className="bg-white/50!"
-              options={statuses.map((s) => ({ label: s, value: s }))}
-              value={filters.status}
-              onChange={(val) =>
-                setFilters((current) => ({
-                  ...current,
-                  page: 1,
-                  status: val,
-                }))
-              }
-            />
-          </Field>
+            <div className="flex items-end md:hidden">
+              <Button
+                variant={isMobileFiltersOpen ? "primary" : "secondary"}
+                className="w-full h-[52px] rounded-2xl flex items-center justify-center gap-2"
+                onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+              >
+                <Filter className="h-4 w-4" />
+                {isMobileFiltersOpen ? "Hide Filters" : "Show Filters"}
+                {activeFilterCount > 0 && !isMobileFiltersOpen && (
+                  <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-black text-[10px] text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
+            </div>
+          </div>
 
-          <Field className="md:col-span-2" label="Search Feedback">
-            <Input
-              className="bg-white/50!"
-              value={filters.search}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  page: 1,
-                  search: event.target.value,
-                }))
-              }
-              placeholder="Search title or AI context..."
-            />
-          </Field>
+          {/* Secondary Filters: Collapsible on mobile, Grid on desktop */}
+          <div
+            className={cn(
+              "grid transition-all duration-300 ease-in-out md:grid md:grid-cols-1",
+              isMobileFiltersOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 md:opacity-100 md:grid-rows-[1fr]"
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="glass-panel relative z-20 p-4 rounded-2xl grid gap-3 grid-cols-1 md:grid-cols-4">
+                <Field label="Category">
+                  <Select
+                    className="bg-white/50!"
+                    options={categories.map((c) => ({ label: c, value: c }))}
+                    value={filters.category}
+                    onChange={(val) =>
+                      setFilters((current) => ({
+                        ...current,
+                        page: 1,
+                        category: val,
+                      }))
+                    }
+                  />
+                </Field>
 
-          <Field label="Sort By">
-            <Select
-              className="bg-white/50!"
-              options={[
-                { label: "Newest First", value: "date:desc" },
-                { label: "Oldest First", value: "date:asc" },
-                { label: "High Priority", value: "priority:desc" },
-                { label: "Low Priority", value: "priority:asc" },
-              ]}
-              value={`${filters.sortBy}:${filters.sortOrder}`}
-              onChange={(val) => {
-                const [sortBy, sortOrder] = val.split(":");
-                setFilters((current) => ({ ...current, sortBy, sortOrder }));
-              }}
-            />
-          </Field>
+                <Field label="Status">
+                  <Select
+                    className="bg-white/50!"
+                    options={statuses.map((s) => ({ label: s, value: s }))}
+                    value={filters.status}
+                    onChange={(val) =>
+                      setFilters((current) => ({
+                        ...current,
+                        page: 1,
+                        status: val,
+                      }))
+                    }
+                  />
+                </Field>
 
-          <div className="flex h-full items-end pb-3 pl-2">
-            <Button
-              variant="tertiary"
-              size="sm"
-              className="text-[10px] font-bold uppercase tracking-widest text-(--muted) hover:text-(--ink)! transition-colors"
-              onClick={handleClearFilters}
-              disabled={
-                filters.category === "All" &&
-                filters.status === "All" &&
-                filters.search === "" &&
-                filters.page === 1
-              }
-            >
-              Clear
-            </Button>
+                <Field label="Sort By">
+                  <Select
+                    className="bg-white/50!"
+                    options={[
+                      { label: "Newest First", value: "date:desc" },
+                      { label: "Oldest First", value: "date:asc" },
+                      { label: "High Priority", value: "priority:desc" },
+                      { label: "Low Priority", value: "priority:asc" },
+                    ]}
+                    value={`${filters.sortBy}:${filters.sortOrder}`}
+                    onChange={(val) => {
+                      const [sortBy, sortOrder] = val.split(":");
+                      setFilters((current) => ({ ...current, sortBy, sortOrder }));
+                    }}
+                  />
+                </Field>
+
+                <div className="flex h-full items-end pb-3 pl-2">
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    className="text-[10px] font-bold uppercase tracking-widest text-(--muted) hover:text-(--ink)! transition-colors"
+                    onClick={handleClearFilters}
+                    disabled={
+                      filters.category === "All" &&
+                      filters.status === "All" &&
+                      filters.search === "" &&
+                      filters.page === 1 &&
+                      filters.sortBy === "date" &&
+                      filters.sortOrder === "desc"
+                    }
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -562,34 +619,38 @@ export function DashboardClient() {
                 isRefreshing ? "opacity-50 pointer-events-none" : "opacity-100"
               )}
             >
-              <table className="dashboard-table w-full min-w-[940px] text-left">
+              <table className="dashboard-table w-full md:min-w-[940px] text-left">
                 <thead>
                   <tr className="bg-(--line)/10 text-xs text-(--muted-strong) uppercase tracking-wider font-bold">
                     <th className="pl-6 py-4">Feedback Content</th>
-                    <th className="py-4">AI Insights</th>
+                    <th className="py-4 hidden md:table-cell">AI Insights</th>
                     <th className="py-4">Workflow Status</th>
-                    <th className="py-4 pr-6">Actions</th>
+                    <th className="py-4 pr-6 hidden md:table-cell text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-(--line)">
                   {feedbackData.items.map((item) => (
-                    <tr className="dashboard-row transition-colors" key={item._id}>
-                      <td className="py-6 pl-6 pr-5 align-top">
-                        <div className="space-y-1.5">
-                          <p className="text-base font-bold text-(--ink) leading-tight">
+                    <tr
+                      key={item._id}
+                      className="dashboard-row cursor-pointer transition-colors hover:bg-gray-50!"
+                      onClick={() => setSelectedFeedback(item)}
+                    >
+                      <td className="py-6 pl-6 pr-4 align-top">
+                        <div className="space-y-1.5 focus:outline-none">
+                          <p className="text-base font-bold text-(--ink) leading-tight line-clamp-3 max-w-[160px] md:max-w-xl">
                             {item.title}
                           </p>
-                          <p className="max-w-xl text-sm leading-6 text-(--muted-strong) line-clamp-2">
+                          <p className="hidden md:block max-w-xl text-sm leading-6 text-(--muted-strong) line-clamp-3">
                             {item.ai_summary ?? item.description}
                           </p>
                           <p className="text-[10px] font-bold tracking-widest uppercase text-(--muted) pt-1">
-                            Received {new Intl.DateTimeFormat("en-US", {
+                            {new Intl.DateTimeFormat("en-US", {
                               dateStyle: "medium",
                             }).format(new Date(item.createdAt))}
                           </p>
                         </div>
                       </td>
-                      <td className="py-6 pr-5 align-top">
+                      <td className="py-6 pr-5 align-top hidden md:table-cell">
                         <div className="flex flex-col items-start gap-2">
                           <span className="badge badge-neutral bg-gray-50!">{item.category}</span>
                           <span
@@ -600,29 +661,22 @@ export function DashboardClient() {
                           >
                             {item.ai_sentiment ?? "Analyzing..."}
                           </span>
-                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap mt-1">
-                            <span className={`h-2 w-2 rounded-full ${(item.ai_priority ?? 0) > 7 ? "bg-red-500" :
-                              (item.ai_priority ?? 0) > 4 ? "bg-amber-500" :
-                                "bg-emerald-500"
-                              }`} />
-                            <span className="text-[10px] uppercase tracking-wider font-bold text-(--ink)">
-                              Priority {item.ai_priority ?? "-"}
-                            </span>
-                          </div>
                         </div>
                       </td>
                       <td className="py-6 pr-5 align-top">
-                        <Select
-                          className="bg-white/50! font-semibold text-xs py-2 px-3 h-auto min-w-[130px] rounded-xl!"
-                          options={statuses.filter((s) => s !== "All").map((s) => ({ label: s, value: s }))}
-                          value={item.status}
-                          onChange={(val) =>
-                            handleStatusChange(item, val as FeedbackStatus)
-                          }
-                        />
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Select
+                            className="bg-white/50! font-semibold text-xs py-2 px-3 h-auto min-w-[130px] rounded-xl!"
+                            options={statuses.filter((s) => s !== "All").map((s) => ({ label: s, value: s }))}
+                            value={item.status}
+                            onChange={(val) =>
+                              handleStatusChange(item, val as FeedbackStatus)
+                            }
+                          />
+                        </div>
                       </td>
-                      <td className="py-6 pr-6 align-top">
-                        <div className="flex items-center gap-3">
+                      <td className="py-6 pr-6 align-top hidden md:table-cell text-right">
+                        <div className="flex items-center justify-end gap-3" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="secondary"
                             size="sm"
@@ -662,6 +716,129 @@ export function DashboardClient() {
                 </tbody>
               </table>
             </div>
+
+            <Dialog
+              open={!!selectedFeedback}
+              onOpenChange={(open: boolean) => !open && setSelectedFeedback(null)}
+            >
+              <DialogContent className="max-w-2xl p-0 overflow-hidden">
+                <div className="max-h-[calc(90vh-80px)] overflow-y-auto custom-scrollbar">
+                  {selectedFeedback && (
+                    <>
+                      <DialogHeader className="pb-0 md:pb-6!">
+                        <div className="space-y-3 mb-6">
+                          <div>
+                            <span className="badge badge-neutral bg-black! text-white! border-none!">{selectedFeedback.category}</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span
+                              className={`badge ${selectedFeedback.ai_sentiment === "Positive" ? "badge-positive" :
+                                selectedFeedback.ai_sentiment === "Negative" ? "badge-negative" :
+                                  "badge-neutral"
+                                }`}
+                            >
+                              {selectedFeedback.ai_sentiment ?? "Analyzing..."}
+                            </span>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap">
+                              <span className={`h-2 w-2 rounded-full ${(selectedFeedback.ai_priority ?? 0) > 7 ? "bg-red-500" :
+                                (selectedFeedback.ai_priority ?? 0) > 4 ? "bg-amber-500" :
+                                  "bg-emerald-500"
+                                }`} />
+                              <span className="text-[10px] uppercase tracking-wider font-bold text-(--ink)">
+                                Priority {selectedFeedback.ai_priority ?? "-"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <DialogTitle className="text-3xl pr-8 leading-tight">{selectedFeedback.title}</DialogTitle>
+                        <DialogDescription className="mt-2 text-sm">
+                          Received on {new Intl.DateTimeFormat("en-US", {
+                            dateStyle: "full",
+                          }).format(new Date(selectedFeedback.createdAt))}
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="px-8 md:px-10 pb-8 pt-8 md:pt-0 space-y-8">
+                        {selectedFeedback.ai_summary && (
+                          <section className="space-y-3">
+                            <p className="eyebrow text-black!">AI Intelligence Summary</p>
+                            <div className="p-5 rounded-2xl bg-gray-50 border border-(--line) text-sm leading-relaxed text-(--ink) font-medium">
+                              {selectedFeedback.ai_summary}
+                            </div>
+                          </section>
+                        )}
+
+                        <section className="space-y-3">
+                          <p className="eyebrow text-black!">Original Message</p>
+                          <div className="whitespace-pre-wrap text-sm leading-relaxed text-(--muted-strong) bg-white p-1">
+                            {selectedFeedback.description}
+                          </div>
+                        </section>
+
+                        <div className="pt-6 border-t border-(--line) flex flex-wrap items-center justify-between gap-6">
+                          <div className="space-y-1.5">
+                            <p className="eyebrow">Workflow Status</p>
+                            <Select
+                              className="bg-gray-50! font-semibold text-xs py-2.5 px-4 h-auto min-w-[160px] rounded-xl!"
+                              options={statuses.filter((s) => s !== "All").map((s) => ({ label: s, value: s }))}
+                              value={selectedFeedback.status}
+                              onChange={(val) => {
+                                handleStatusChange(selectedFeedback, val as FeedbackStatus);
+                                setSelectedFeedback({ ...selectedFeedback, status: val as FeedbackStatus });
+                              }}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleReanalyze(selectedFeedback)}
+                            >
+                              Rescan with AI
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="danger" size="sm">
+                                  Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="rounded-4xl!">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-(--muted-strong) font-medium opacity-80!">
+                                    This action cannot be undone. This will permanently delete the feedback entry
+                                    "{selectedFeedback.title}" from the database.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel className="rounded-xl! border-white/20! bg-white/20! backdrop-blur-sm! text-(--ink)!">Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => {
+                                      handleDelete(selectedFeedback._id);
+                                      setSelectedFeedback(null);
+                                    }}
+                                    className="rounded-xl! bg-red-600! hover:bg-red-700! border-none!"
+                                  >
+                                    Delete Feedback
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </div>
+                      </div>
+
+                      <DialogFooter className="bg-gray-50/50 py-4 px-8 md:px-10 border-t border-(--line) shrink-0">
+                        <Button variant="secondary" onClick={() => setSelectedFeedback(null)}>
+                          Close Details
+                        </Button>
+                      </DialogFooter>
+                    </>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
 
             <div className="flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-(--line)">
               <p className="text-xs font-bold uppercase tracking-widest text-(--muted-strong)">

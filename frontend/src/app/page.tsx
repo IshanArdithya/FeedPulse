@@ -6,20 +6,23 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-white px-5 py-5 md:px-8 md:py-8">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-10">
-        <header className="panel sticky top-5 md:top-8 z-50 flex flex-wrap items-center justify-between gap-4 px-5 py-4 md:px-6 shadow-xl shadow-black/2 backdrop-blur-md! bg-white/80!">
+        <header className="panel sticky top-5 md:top-8 z-50 flex items-center justify-between gap-4 px-4 py-3 md:px-6 md:py-4 shadow-xl shadow-black/2 backdrop-blur-md! bg-white/80!">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black text-sm font-bold text-white">
+            <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl md:rounded-2xl bg-black text-xs md:text-sm font-bold text-white shrink-0">
               FP
             </div>
             <div>
-              <p className="eyebrow">FeedPulse</p>
-              <p className="text-sm text-(--muted-strong)">
+              <p className="eyebrow leading-none">FeedPulse</p>
+              <p className="hidden md:block text-sm text-(--muted-strong) mt-1">
                 AI-powered product feedback platform
+              </p>
+              <p className="md:hidden text-[10px] font-bold text-(--muted) uppercase tracking-wider mt-0.5">
+                AI-powered feedback platform
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="secondary" asChild>
+            <Button variant="secondary" size="sm" className="md:px-5" asChild>
               <Link href="/admin">
                 Admin login
               </Link>

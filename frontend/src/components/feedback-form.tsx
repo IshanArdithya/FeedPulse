@@ -129,7 +129,7 @@ export function FeedbackForm() {
             Share the issue clearly
           </h3>
         </div>
-        <span className="mono-kicker">Step 1 of 1</span>
+        <span className="mono-kicker hidden md:inline-block">Step 1 of 1</span>
       </div>
 
       <div className="surface-rule pt-6">
