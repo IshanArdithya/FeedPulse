@@ -97,3 +97,12 @@ export async function reanalyzeFeedback(token: string, id: string) {
     },
   });
 }
+
+export async function deleteFeedback(token: string, id: string) {
+  return request<void>(`/feedback/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}

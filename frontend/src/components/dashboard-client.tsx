@@ -1,15 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   getFeedbackList,
   getFeedbackSummary,
   refreshFeedbackSummary,
   reanalyzeFeedback,
   updateFeedbackStatus,
+  deleteFeedback,
 } from "@/lib/api";
 import { clearAdminToken, getAdminToken } from "@/lib/auth";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type {
   FeedbackCategory,
   FeedbackItem,
@@ -35,23 +54,49 @@ const statuses: Array<FeedbackStatus | "All"> = [
 
 export function DashboardClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
   const [token, setToken] = useState<string | null>(null);
-  const [feedbackData, setFeedbackData] = useState<FeedbackListResponse | null>(
-    null,
-  );
+  const [feedbackData, setFeedbackData] = useState<FeedbackListResponse | null>(null);
   const [summary, setSummary] = useState<FeedbackSummaryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [filters, setFilters] = useState({
-    page: 1,
-    category: "All",
-    status: "All",
-    search: "",
-    sortBy: "date",
-    sortOrder: "desc",
+    page: Number(searchParams.get("page")) || 1,
+    category: searchParams.get("category") || "All",
+    status: searchParams.get("status") || "All",
+    search: searchParams.get("search") || "",
+    sortBy: searchParams.get("sortBy") || "date",
+    sortOrder: searchParams.get("sortOrder") || "desc",
   });
+
+  const handleClearFilters = () => {
+    setFilters({
+      page: 1,
+      category: "All",
+      status: "All",
+      search: "",
+      sortBy: "date",
+      sortOrder: "desc",
+    });
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.page > 1) params.set("page", String(filters.page));
+    if (filters.category !== "All") params.set("category", filters.category);
+    if (filters.status !== "All") params.set("status", filters.status);
+    if (filters.search) params.set("search", filters.search);
+    if (filters.sortBy !== "date") params.set("sortBy", filters.sortBy);
+    if (filters.sortOrder !== "desc") params.set("sortOrder", filters.sortOrder);
+
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [filters, pathname, router]);
 
   async function loadSummary(tokenValue: string) {
     const response = await getFeedbackSummary(tokenValue);
@@ -77,7 +122,11 @@ export function DashboardClient() {
 
     async function loadFeedback() {
       const currentToken = token as string;
-      setIsLoading(true);
+      if (!feedbackData) {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
       setError(null);
 
       try {
@@ -106,6 +155,7 @@ export function DashboardClient() {
         }
       } finally {
         setIsLoading(false);
+        setIsRefreshing(false);
       }
     }
 
@@ -132,7 +182,11 @@ export function DashboardClient() {
             void fetchSummary();
           }, 2500);
         }
+        if (!summaryData.isRefreshing) {
+          toast.success("Intelligence Summary updated");
+        }
       } catch (loadError) {
+        toast.error("Summary refresh failed");
         setSummary(null);
         setSummaryError(
           loadError instanceof Error
@@ -164,19 +218,40 @@ export function DashboardClient() {
       setFeedbackData((current) =>
         current
           ? {
-              ...current,
-              items: current.items.map((entry) =>
-                entry._id === item._id ? { ...entry, status } : entry,
-              ),
-            }
+            ...current,
+            items: current.items.map((entry) =>
+              entry._id === item._id ? { ...entry, status } : entry,
+            ),
+          }
           : current,
       );
+      toast.success(`Feedback status updated to ${status}`);
     } catch (updateError) {
+      toast.error("Failed to update status");
       setError(
         updateError instanceof Error
           ? updateError.message
           : "Status update failed",
       );
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!token) return;
+
+    try {
+      await deleteFeedback(token, id);
+      setFeedbackData((current) =>
+        current
+          ? {
+            ...current,
+            items: current.items.filter((entry) => entry._id !== id),
+          }
+          : current,
+      );
+      toast.success("Feedback deleted successfully");
+    } catch (error) {
+      toast.error("Failed to delete feedback");
     }
   }
 
@@ -188,14 +263,16 @@ export function DashboardClient() {
       setFeedbackData((current) =>
         current
           ? {
-              ...current,
-              items: current.items.map((entry) =>
-                entry._id === item._id ? response.data : entry,
-              ),
-            }
+            ...current,
+            items: current.items.map((entry) =>
+              entry._id === item._id ? response.data : entry,
+            ),
+          }
           : current,
       );
+      toast.success("AI Analysis completed");
     } catch (reanalyzeError) {
+      toast.error("AI Analysis failed");
       setError(
         reanalyzeError instanceof Error
           ? reanalyzeError.message
@@ -215,6 +292,7 @@ export function DashboardClient() {
       const response = await refreshFeedbackSummary(token);
 
       if (response.data.started || response.data.alreadyRefreshing) {
+        toast.info(response.data.alreadyRefreshing ? "Analysis already in progress..." : "Intelligence Summary scan started...");
         setIsSummaryLoading(false);
 
         const summaryData = await loadSummary(token);
@@ -244,217 +322,194 @@ export function DashboardClient() {
     }
   }
 
-  if (isLoading) {
-    return <div className="panel">Loading dashboard...</div>;
-  }
 
   if (error) {
     return <div className="notice notice-error">{error}</div>;
   }
 
   return (
-    <div className="space-y-6">
-      <section className="panel grid gap-6 p-6 md:grid-cols-[1.15fr_0.85fr] md:p-8">
-        <div className="space-y-6">
-          <div className="flex flex-wrap gap-3">
-            <span className="mono-kicker">Admin dashboard</span>
-            <span className="mono-kicker">Review workspace</span>
+    <div className="space-y-10 pb-20">
+      <section className="space-y-8">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-2">
+            <span className="mono-kicker border-(--line-strong)">Admin dashboard</span>
           </div>
-          <div className="space-y-4">
-            <p className="eyebrow">Feedback intelligence</p>
-            <h1 className="text-4xl font-semibold tracking-tight text-[var(--ink)] md:text-5xl">
-              Review signals, not just submissions.
-            </h1>
-            <p className="subheading max-w-2xl">
-              Filter feedback, review AI interpretation, move items through the
-              workflow, and spot what keeps appearing across the last week of
-              product input.
-            </p>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden lg:block text-right pr-4 border-r border-(--line)">
+              <p className="eyebrow">Signed in as</p>
+              <p className="text-sm font-semibold text-(--ink)">Admin</p>
+            </div>
+            <Button
+              variant="secondary"
+              className="bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-200!"
+              onClick={() => {
+                clearAdminToken();
+                router.push("/admin");
+              }}
+              type="button"
+            >
+              Log out
+            </Button>
           </div>
         </div>
 
-        <div className="flex flex-col justify-between gap-4">
-          <div className="metric-card-dark">
-            <p className="eyebrow !text-white/60">Session</p>
-            <p className="mt-3 text-2xl font-semibold text-white">
-              Product review mode
-            </p>
-            <p className="mt-2 text-sm leading-7 text-white/70">
-              You are signed in with admin access and can update status or rerun AI analysis.
-            </p>
-          </div>
-          <button
-            className="button-secondary w-fit"
-            onClick={() => {
-              clearAdminToken();
-              router.push("/admin");
-            }}
-            type="button"
-          >
-            Log out
-          </button>
+        <div className="space-y-1">
+          <h1 className="text-4xl font-bold tracking-tight text-(--ink) md:text-5xl">
+            Feedback Overview
+          </h1>
+          <p className="subheading max-w-2xl text-lg opacity-60">
+            Monitor customer trends and prioritize what matters most.
+          </p>
         </div>
       </section>
 
       {feedbackData ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            tone="dark"
-            label="Total feedback"
+            tone="brand"
+            label="Total entries"
             value={String(feedbackData.stats.totalFeedback)}
           />
           <StatCard
-            label="Open items"
+            label="In the queue"
             value={String(feedbackData.stats.openItems)}
           />
           <StatCard
-            label="Avg. priority"
+            label="Priority Average"
             value={String(feedbackData.stats.averagePriority)}
           />
-          <StatCard label="Top tag" value={feedbackData.stats.mostCommonTag} />
+          <StatCard
+            label="Strongest theme"
+            value={feedbackData.stats.mostCommonTag}
+          />
         </section>
-      ) : null}
+      ) : (
+        <StatsSkeleton />
+      )}
 
       {isSummaryLoading && !summary ? (
-        <section className="panel-dark space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="eyebrow !text-white/60">Last 7 days</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                Generating summary...
-              </h2>
-            </div>
-            <span className="mono-kicker !border-white/15 !text-white/70">
-              Preparing AI snapshot
-            </span>
-          </div>
-          <div className="space-y-3">
-            <div className="h-4 w-full rounded-full bg-white/10" />
-            <div className="h-4 w-11/12 rounded-full bg-white/10" />
-            <div className="h-4 w-10/12 rounded-full bg-white/10" />
-          </div>
-        </section>
+        <SummarySkeleton />
       ) : summary ? (
-        <section className="panel-dark space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="eyebrow !text-white/60">Last 7 days</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                AI trend summary
-              </h2>
+        <section className="glass-panel rounded-[32px] overflow-hidden">
+          <div className="p-8 md:p-10 space-y-8">
+            <div className="flex flex-wrap items-center justify-between gap-6">
+              <div className="space-y-1">
+                <p className="eyebrow text-emerald-600!">AI Overview</p>
+                <h2 className="text-3xl font-bold tracking-tight text-(--ink)">
+                  Intelligence Summary
+                </h2>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="badge badge-info">
+                  {summary.feedbackCount} items analyzed
+                </span>
+                {summary.isRefreshing && (
+                  <span className="badge badge-warning animate-pulse">
+                    Refreshing...
+                  </span>
+                )}
+                {summary.isStale && !summary.isRefreshing && (
+                  <span className="badge badge-neutral">Stale</span>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="mono-kicker !border-white/15 !text-white/70">
-                {summary.feedbackCount} items analyzed
-              </span>
-              {summary.isRefreshing ? (
-                <span className="mono-kicker !border-white/15 !text-white/70">
-                  Refreshing...
+
+            <div className="max-w-4xl">
+              <p className="text-lg leading-relaxed text-(--muted-strong) font-medium italic">
+                "{summary.summary || "A stored summary is not available yet."}"
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {summary.themes.map((theme) => (
+                <span
+                  className="rounded-xl bg-(--ink) text-white px-4 py-2 text-sm font-medium transition-transform hover:scale-105"
+                  key={theme.theme}
+                >
+                  {theme.theme} <span className="opacity-50 ml-1">{theme.count}</span>
                 </span>
-              ) : null}
-              {summary.isStale && !summary.isRefreshing ? (
-                <span className="mono-kicker !border-white/15 !text-white/70">
-                  Stale
-                </span>
-              ) : null}
+              ))}
             </div>
           </div>
-          <p className="max-w-5xl text-sm leading-8 text-white/78 md:text-base">
-            {summary.summary || "A stored summary is not available yet."}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {summary.themes.map((theme) => (
-              <span
-                className="rounded-full border border-white/15 px-4 py-2 text-sm text-white/78"
-                key={theme.theme}
-              >
-                {theme.theme} ({theme.count})
-              </span>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 surface-rule pt-5">
-            <div className="text-sm text-white/65">
+
+          <div className="px-8 py-5 bg-(--line)/20 border-t border-(--line) flex flex-wrap items-center justify-between gap-4">
+            <p className="text-xs font-medium text-(--muted-strong)">
               {summary.lastRefreshStatus === "failed"
-                ? "Couldn’t refresh, showing the last available summary."
+                ? "Couldn’t refresh, showing last available summary."
                 : summary.isRefreshing
-                  ? "Generating an updated summary in the background."
-                  : summary.generatedAt
-                    ? `Last generated ${new Intl.DateTimeFormat("en-US", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      }).format(new Date(summary.generatedAt))}`
-                    : "Summary not generated yet."}
-            </div>
-            <button
-              className="button-secondary"
+                  ? "Updating summary in background..."
+                  : summary?.generatedAt
+                    ? `Summary generated ${new Intl.DateTimeFormat("en-US", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }).format(new Date(summary.generatedAt))}`
+                    : "No data available."}
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="bg-white/50! uppercase tracking-wider"
               onClick={handleRefreshSummary}
-              type="button"
+              disabled={summary.isRefreshing}
             >
-              Refresh summary
-            </button>
+              Regenerate Summary
+            </Button>
           </div>
         </section>
       ) : summaryError ? (
-        <section className="notice notice-error">
-          Summary unavailable: {summaryError}
+        <section className="notice notice-error rounded-3xl">
+          Intelligence engine offline: {summaryError}
         </section>
       ) : null}
 
-      <section className="panel space-y-6 p-6 md:p-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="eyebrow">Review queue</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--ink)]">
-              All feedback
+      <section className="space-y-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-1">
+            <p className="eyebrow">Review Queue</p>
+            <h2 className="text-3xl font-bold tracking-tight text-(--ink)">
+              Feedback
             </h2>
           </div>
-          <p className="max-w-xl text-sm leading-7 text-[var(--muted-strong)]">
-            Use filters to narrow the queue, then update statuses or rerun analysis where more accurate AI context is needed.
+          <p className="max-w-md text-sm text-(--muted-strong) font-medium opacity-60">
+            Review and manage user feedback with AI-powered insights.
           </p>
         </div>
 
-        <div className="panel-soft grid gap-3 md:grid-cols-5">
-          <label className="field">
-            <span>Category</span>
-            <select
+        <div className="glass-panel relative z-20 p-4 rounded-2xl grid gap-3 md:grid-cols-5">
+          <Field label="Category">
+            <Select
+              className="bg-white/50!"
+              options={categories.map((c) => ({ label: c, value: c }))}
               value={filters.category}
-              onChange={(event) =>
+              onChange={(val) =>
                 setFilters((current) => ({
                   ...current,
                   page: 1,
-                  category: event.target.value,
+                  category: val,
                 }))
               }
-            >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Status</span>
-            <select
+            />
+          </Field>
+
+          <Field label="Status">
+            <Select
+              className="bg-white/50!"
+              options={statuses.map((s) => ({ label: s, value: s }))}
               value={filters.status}
-              onChange={(event) =>
+              onChange={(val) =>
                 setFilters((current) => ({
                   ...current,
                   page: 1,
-                  status: event.target.value,
+                  status: val,
                 }))
               }
-            >
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field md:col-span-2">
-            <span>Search</span>
-            <input
+            />
+          </Field>
+
+          <Field className="md:col-span-2" label="Search Feedback">
+            <Input
+              className="bg-white/50!"
               value={filters.search}
               onChange={(event) =>
                 setFilters((current) => ({
@@ -463,146 +518,196 @@ export function DashboardClient() {
                   search: event.target.value,
                 }))
               }
-              placeholder="Search by title or AI summary"
+              placeholder="Search title or AI context..."
             />
-          </label>
-          <label className="field">
-            <span>Sort</span>
-            <select
+          </Field>
+
+          <Field label="Sort By">
+            <Select
+              className="bg-white/50!"
+              options={[
+                { label: "Newest First", value: "date:desc" },
+                { label: "Oldest First", value: "date:asc" },
+                { label: "High Priority", value: "priority:desc" },
+                { label: "Low Priority", value: "priority:asc" },
+              ]}
               value={`${filters.sortBy}:${filters.sortOrder}`}
-              onChange={(event) => {
-                const [sortBy, sortOrder] = event.target.value.split(":");
+              onChange={(val) => {
+                const [sortBy, sortOrder] = val.split(":");
                 setFilters((current) => ({ ...current, sortBy, sortOrder }));
               }}
-            >
-              <option value="date:desc">Newest first</option>
-              <option value="date:asc">Oldest first</option>
-              <option value="priority:desc">Highest priority</option>
-              <option value="priority:asc">Lowest priority</option>
-              <option value="sentiment:asc">Sentiment A-Z</option>
-              <option value="sentiment:desc">Sentiment Z-A</option>
-            </select>
-          </label>
-        </div>
+            />
+          </Field>
 
-        <div className="overflow-x-auto">
-          <table className="dashboard-table w-full min-w-[940px] text-left">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Sentiment</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {feedbackData?.items.map((item) => (
-                <tr className="dashboard-row" key={item._id}>
-                  <td className="pr-5">
-                    <div className="space-y-2">
-                      <p className="text-base font-semibold text-[var(--ink)]">
-                        {item.title}
-                      </p>
-                      <p className="max-w-xl text-sm leading-7 text-[var(--muted-strong)]">
-                        {item.ai_summary ?? item.description}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="pr-5">
-                    <span className="tag">{item.category}</span>
-                  </td>
-                  <td className="pr-5">
-                    <span
-                      className={`badge badge-${(item.ai_sentiment ?? "neutral").toLowerCase()}`}
-                    >
-                      {item.ai_sentiment ?? "Pending"}
-                    </span>
-                  </td>
-                  <td className="pr-5 text-base font-semibold text-[var(--ink)]">
-                    {item.ai_priority ?? "-"}
-                  </td>
-                  <td className="pr-5">
-                    <select
-                      className="table-select"
-                      value={item.status}
-                      onChange={(event) =>
-                        handleStatusChange(
-                          item,
-                          event.target.value as FeedbackStatus,
-                        )
-                      }
-                    >
-                      {statuses
-                        .filter((status) => status !== "All")
-                        .map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                    </select>
-                  </td>
-                  <td className="pr-5 text-sm text-[var(--muted-strong)]">
-                    {new Intl.DateTimeFormat("en-US", {
-                      dateStyle: "medium",
-                    }).format(new Date(item.createdAt))}
-                  </td>
-                  <td>
-                    <button
-                      className="button-tertiary"
-                      onClick={() => handleReanalyze(item)}
-                      type="button"
-                    >
-                      Re-run AI
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="flex h-full items-end pb-3 pl-2">
+            <Button
+              variant="tertiary"
+              size="sm"
+              className="text-[10px] font-bold uppercase tracking-widest text-(--muted) hover:text-(--ink)! transition-colors"
+              onClick={handleClearFilters}
+              disabled={
+                filters.category === "All" &&
+                filters.status === "All" &&
+                filters.search === "" &&
+                filters.page === 1
+              }
+            >
+              Clear
+            </Button>
+          </div>
         </div>
 
         {feedbackData ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-[var(--muted-strong)]">
-              Page {feedbackData.pagination.page} of{" "}
-              {feedbackData.pagination.totalPages}
-            </p>
-            <div className="flex gap-2">
-              <button
-                className="button-secondary"
-                disabled={feedbackData.pagination.page === 1}
-                onClick={() =>
-                  setFilters((current) => ({
-                    ...current,
-                    page: current.page - 1,
-                  }))
-                }
-                type="button"
-              >
-                Previous
-              </button>
-              <button
-                className="button-secondary"
-                disabled={
-                  feedbackData.pagination.page >=
-                  feedbackData.pagination.totalPages
-                }
-                onClick={() =>
-                  setFilters((current) => ({
-                    ...current,
-                    page: current.page + 1,
-                  }))
-                }
-                type="button"
-              >
-                Next
-              </button>
+          <>
+            <div
+              className={cn(
+                "relative z-10 overflow-x-auto rounded-2xl border border-(--line) bg-white transition-opacity duration-300",
+                isRefreshing ? "opacity-50 pointer-events-none" : "opacity-100"
+              )}
+            >
+              <table className="dashboard-table w-full min-w-[940px] text-left">
+                <thead>
+                  <tr className="bg-(--line)/10 text-xs text-(--muted-strong) uppercase tracking-wider font-bold">
+                    <th className="pl-6 py-4">Feedback Content</th>
+                    <th className="py-4">AI Insights</th>
+                    <th className="py-4">Workflow Status</th>
+                    <th className="py-4 pr-6">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-(--line)">
+                  {feedbackData.items.map((item) => (
+                    <tr className="dashboard-row transition-colors" key={item._id}>
+                      <td className="py-6 pl-6 pr-5 align-top">
+                        <div className="space-y-1.5">
+                          <p className="text-base font-bold text-(--ink) leading-tight">
+                            {item.title}
+                          </p>
+                          <p className="max-w-xl text-sm leading-6 text-(--muted-strong) line-clamp-2">
+                            {item.ai_summary ?? item.description}
+                          </p>
+                          <p className="text-[10px] font-bold tracking-widest uppercase text-(--muted) pt-1">
+                            Received {new Intl.DateTimeFormat("en-US", {
+                              dateStyle: "medium",
+                            }).format(new Date(item.createdAt))}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="py-6 pr-5 align-top">
+                        <div className="flex flex-col items-start gap-2">
+                          <span className="badge badge-neutral bg-gray-50!">{item.category}</span>
+                          <span
+                            className={`badge ${item.ai_sentiment === "Positive" ? "badge-positive" :
+                              item.ai_sentiment === "Negative" ? "badge-negative" :
+                                "badge-neutral"
+                              }`}
+                          >
+                            {item.ai_sentiment ?? "Analyzing..."}
+                          </span>
+                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap mt-1">
+                            <span className={`h-2 w-2 rounded-full ${(item.ai_priority ?? 0) > 7 ? "bg-red-500" :
+                              (item.ai_priority ?? 0) > 4 ? "bg-amber-500" :
+                                "bg-emerald-500"
+                              }`} />
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-(--ink)">
+                              Priority {item.ai_priority ?? "-"}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-6 pr-5 align-top">
+                        <Select
+                          className="bg-white/50! font-semibold text-xs py-2 px-3 h-auto min-w-[130px] rounded-xl!"
+                          options={statuses.filter((s) => s !== "All").map((s) => ({ label: s, value: s }))}
+                          value={item.status}
+                          onChange={(val) =>
+                            handleStatusChange(item, val as FeedbackStatus)
+                          }
+                        />
+                      </td>
+                      <td className="py-6 pr-6 align-top">
+                        <div className="flex items-center gap-3">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleReanalyze(item)}
+                          >
+                            Rescan
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="danger" size="sm">
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="rounded-4xl!">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription className="text-(--muted-strong) font-medium opacity-80!">
+                                  This action cannot be undone. This will permanently delete the feedback entry
+                                  "{item.title}" from the database.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="rounded-xl! border-white/20! bg-white/20! backdrop-blur-sm! text-(--ink)!">Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(item._id)}
+                                  className="rounded-xl! bg-red-600! hover:bg-red-700! border-none!"
+                                >
+                                  Delete Feedback
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-        ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-(--line)">
+              <p className="text-xs font-bold uppercase tracking-widest text-(--muted-strong)">
+                Page {feedbackData.pagination.page} <span className="opacity-40 mx-1">/</span> {feedbackData.pagination.totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="uppercase tracking-wider"
+                  disabled={feedbackData.pagination.page === 1}
+                  onClick={() =>
+                    setFilters((current) => ({
+                      ...current,
+                      page: current.page - 1,
+                    }))
+                  }
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="uppercase tracking-wider"
+                  disabled={
+                    feedbackData.pagination.page >=
+                    feedbackData.pagination.totalPages
+                  }
+                  onClick={() =>
+                    setFilters((current) => ({
+                      ...current,
+                      page: current.page + 1,
+                    }))
+                  }
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <TableSkeleton />
+        )}
       </section>
     </div>
   );
@@ -615,18 +720,88 @@ function StatCard({
 }: {
   label: string;
   value: string;
-  tone?: "dark";
+  tone?: "brand";
 }) {
   return (
-    <article className={tone === "dark" ? "metric-card-dark" : "metric-card"}>
-      <p className={`eyebrow ${tone === "dark" ? "!text-white/60" : ""}`}>{label}</p>
-      <p
-        className={`mt-3 text-4xl font-semibold tracking-tight ${
-          tone === "dark" ? "text-white" : "text-[var(--ink)]"
-        }`}
-      >
+    <article className={`p-6 rounded-3xl border border-(--line) ${tone === "brand" ? "bg-(--ink) text-white shadow-xl shadow-black/10" : "bg-white"}`}>
+      <p className={`eyebrow mb-3 ${tone === "brand" ? "text-white/60!" : ""}`}>{label}</p>
+      <p className={`stat-value ${tone === "brand" ? "text-white" : "text-(--ink)"}`}>
         {value}
       </p>
     </article>
+  );
+}
+
+function StatsSkeleton() {
+  return (
+    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="p-6 rounded-3xl border border-(--line) bg-white space-y-3">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-10 w-12" />
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function SummarySkeleton() {
+  return (
+    <section className="glass-panel rounded-[32px] overflow-hidden">
+      <div className="p-8 md:p-10 space-y-8">
+        <div className="flex flex-wrap items-center justify-between gap-6">
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-10 w-64" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-6 w-24 rounded-full" />
+          </div>
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-[90%]" />
+          <Skeleton className="h-4 w-[85%]" />
+        </div>
+        <div className="flex gap-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-9 w-24 rounded-xl" />
+          ))}
+        </div>
+      </div>
+      <div className="px-8 py-5 bg-(--line)/20 border-t border-(--line) flex items-center justify-between">
+        <Skeleton className="h-3 w-48" />
+        <Skeleton className="h-9 w-32 rounded-full" />
+      </div>
+    </section>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="border border-(--line) rounded-2xl bg-white overflow-hidden">
+      <div className="bg-(--line)/10 px-6 py-4 border-b border-(--line)">
+        <div className="flex gap-10">
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+      </div>
+      <div className="divide-y divide-(--line)">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="p-6 flex flex-wrap gap-10 items-start justify-between">
+            <div className="space-y-2 flex-1">
+              <Skeleton className="h-5 w-1/3" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <div className="flex flex-col gap-2 min-w-[120px]">
+              <Skeleton className="h-6 w-full rounded-full" />
+              <Skeleton className="h-6 w-full rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

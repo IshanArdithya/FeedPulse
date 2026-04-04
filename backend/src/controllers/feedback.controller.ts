@@ -41,9 +41,7 @@ export const submitFeedbackController = asyncHandler(async (req: Request, res: R
   res.status(201).json(
     successResponse(
       result.feedback,
-      result.aiFailed
-        ? "Feedback saved. Gemini analysis is pending or unavailable."
-        : "Feedback submitted successfully",
+      "Feedback submitted successfully",
     ),
   );
 });

@@ -114,6 +114,7 @@ button {
 .field textarea,
 .field select,
 .table-select {
+  display: block;
   width: 100%;
   border-radius: 18px;
   border: 1px solid var(--line-strong);
@@ -165,7 +166,8 @@ button {
 .button-primary:hover,
 .button-secondary:hover,
 .button-tertiary:hover {
-  transform: translateY(-1px);
+  transform: scale(1.015);
+  opacity: 0.95;
 }
 
 .button-primary:disabled,
@@ -223,19 +225,50 @@ button {
 }
 
 .badge-positive {
-  background: #ffffff;
-  color: #111111;
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.2);
 }
 
 .badge-neutral {
-  background: #f2f2f2;
-  color: #111111;
+  background: rgba(107, 114, 128, 0.1);
+  color: #4b5563;
+  border-color: rgba(107, 114, 128, 0.2);
 }
 
 .badge-negative {
-  border-color: #111111;
-  background: #111111;
-  color: #ffffff;
+  background: rgba(244, 63, 94, 0.1);
+  color: #e11d48;
+  border-color: rgba(244, 63, 94, 0.2);
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.badge-info {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.99);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(231, 231, 231, 0.5);
+}
+
+.stat-value {
+  font-size: 2.75rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.dashboard-row:hover {
+  background-color: rgba(0, 0, 0, 0.015);
 }
 
 .mono-kicker {
@@ -282,6 +315,7 @@ button {
 }
 
 @media (max-width: 768px) {
+
   .panel,
   .panel-soft,
   .panel-dark {
