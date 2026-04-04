@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3efe4;
+  --foreground: #1f2421;
+  --ink: #112018;
+  --muted: #6c756f;
+  --muted-strong: #435049;
+  --panel: rgba(255, 255, 255, 0.7);
+  --accent: #0f766e;
+  --accent-soft: #dff6f1;
+  --danger-soft: #fde7e2;
+  --danger-text: #9f2d20;
+  --success-soft: #e7f8e9;
+  --success-text: #1f6f36;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-space-grotesk);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-space-grotesk), sans-serif;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+.panel {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: var(--panel);
+  border-radius: 32px;
+  padding: 1.5rem;
+  box-shadow: 0 22px 60px rgba(29, 41, 35, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.field span {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.field small {
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+}
+
+.field input,
+.field textarea,
+.field select,
+.table-select {
+  width: 100%;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 32, 24, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.95rem 1rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus,
+.table-select:focus {
+  border-color: rgba(15, 118, 110, 0.6);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+}
+
+.button-primary,
+.button-secondary,
+.button-tertiary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.9rem 1.2rem;
+  font-weight: 600;
+  transition: transform 180ms ease, opacity 180ms ease, background-color 180ms ease;
+}
+
+.button-primary {
+  background: var(--ink);
+  color: white;
+}
+
+.button-secondary {
+  border: 1px solid rgba(17, 32, 24, 0.12);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--ink);
+}
+
+.button-tertiary {
+  background: transparent;
+  color: var(--accent);
+  padding-inline: 0;
+}
+
+.button-primary:hover,
+.button-secondary:hover,
+.button-tertiary:hover {
+  transform: translateY(-1px);
+}
+
+.button-primary:disabled,
+.button-secondary:disabled,
+.button-tertiary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notice {
+  border-radius: 22px;
+  padding: 0.95rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.notice-success {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.notice-error {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.45rem 0.8rem;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.badge {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.badge-positive {
+  background: #ddf6e3;
+  color: #1f6f36;
+}
+
+.badge-neutral {
+  background: #eef1f3;
+  color: #50606a;
+}
+
+.badge-negative {
+  background: #fde4de;
+  color: #9f2d20;
+}
