@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 const TOKEN_NAME = "feedpulse_admin_token";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const token = request.cookies.get(TOKEN_NAME)?.value;
   const isLoginPage = request.nextUrl.pathname === "/admin";
   const isDashboardPage = request.nextUrl.pathname.startsWith("/dashboard");
