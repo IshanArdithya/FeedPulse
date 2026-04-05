@@ -512,6 +512,8 @@ export function DashboardClient() {
                   }))
                 }
                 placeholder="Search title or AI context..."
+                maxLength={120}
+                showCounter
               />
             </Field>
 
@@ -629,110 +631,144 @@ export function DashboardClient() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-(--line)">
-                  {feedbackData.items.map((item) => (
-                    <tr
-                      key={item._id}
-                      className="dashboard-row cursor-pointer transition-colors hover:bg-gray-50!"
-                      onClick={() => setSelectedFeedback(item)}
-                    >
-                      <td className="py-6 pl-6 pr-4 align-top">
-                        <div className="space-y-1.5 focus:outline-none">
-                          <p className="text-base font-bold text-(--ink) leading-tight line-clamp-3 max-w-[160px] md:max-w-xl">
-                            {item.title}
-                          </p>
-                          <p className="hidden md:block max-w-xl text-sm leading-6 text-(--muted-strong) line-clamp-3">
-                            {item.ai_summary ?? item.description}
-                          </p>
-                          <p className="text-[10px] font-bold tracking-widest uppercase text-(--muted) pt-1">
-                            {new Intl.DateTimeFormat("en-US", {
-                              dateStyle: "medium",
-                            }).format(new Date(item.createdAt))}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="py-6 pr-5 align-top hidden md:table-cell">
-                        <div className="flex flex-col items-start gap-2">
-                          <span className="badge badge-neutral bg-gray-50!">{item.category}</span>
-                          {reanalyzeStateById[item._id] === "running" ? (
-                            <span className="badge badge-warning">Rescanning...</span>
-                          ) : reanalyzeStateById[item._id] === "failed" ? (
-                            <span className="badge badge-neutral">AI failed</span>
-                          ) : (
-                            <span
-                              className={`badge ${item.ai_sentiment === "Positive" ? "badge-positive" :
-                                item.ai_sentiment === "Negative" ? "badge-negative" :
-                                  "badge-neutral"
-                                }`}
-                            >
-                              {item.ai_sentiment ?? "Analyzing..."}
-                            </span>
-                          )}
-                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap mt-1">
-                            <span className={`h-2 w-2 rounded-full ${(item.ai_priority ?? 0) > 7 ? "bg-red-500" :
-                              (item.ai_priority ?? 0) > 4 ? "bg-amber-500" :
-                                "bg-emerald-500"
-                              }`} />
-                            <span className="text-[10px] uppercase tracking-wider font-bold text-(--ink)">
-                              Priority {item.ai_priority ?? "-"}
-                            </span>
+                  {feedbackData.items.length > 0 ? (
+                    feedbackData.items.map((item) => (
+                      <tr
+                        key={item._id}
+                        className="dashboard-row cursor-pointer transition-colors hover:bg-gray-50!"
+                        onClick={() => setSelectedFeedback(item)}
+                      >
+                        <td className="py-6 pl-6 pr-4 align-top">
+                          <div className="space-y-1.5 focus:outline-none">
+                            <p className="text-base font-bold text-(--ink) leading-tight line-clamp-2 max-w-[160px] md:max-w-xl">
+                              {item.title}
+                            </p>
+                            <p className="hidden md:block max-w-xl text-sm leading-6 text-(--muted-strong) line-clamp-3">
+                              {item.ai_summary ?? item.description}
+                            </p>
+                            <p className="text-[10px] font-bold tracking-widest uppercase text-(--muted) pt-1">
+                              {new Intl.DateTimeFormat("en-US", {
+                                dateStyle: "medium",
+                              }).format(new Date(item.createdAt))}
+                            </p>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-6 pr-5 align-top">
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <Select
-                            className="bg-white/50! font-semibold text-xs py-2 px-3 h-auto min-w-[130px] rounded-xl!"
-                            options={statuses.filter((s) => s !== "All").map((s) => ({ label: s, value: s }))}
-                            value={item.status}
-                            onChange={(val) =>
-                              handleStatusChange(item, val as FeedbackStatus)
-                            }
-                          />
-                        </div>
-                      </td>
-                      <td className="py-6 pr-6 align-top hidden md:table-cell text-right">
-                        <div className="flex items-center justify-end gap-3" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={reanalyzeStateById[item._id] === "running"}
-                            onClick={() => handleReanalyze(item)}
-                          >
-                            {reanalyzeStateById[item._id] === "running"
-                              ? "Rescanning..."
-                              : reanalyzeStateById[item._id] === "failed"
-                                ? "Retry AI"
-                                : "Rescan"}
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="danger" size="sm">
-                                Delete
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent className="rounded-4xl!">
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription className="text-(--muted-strong) font-medium opacity-80!">
-                                  This action cannot be undone. This will permanently delete the feedback entry
-                                  &quot;{item.title}&quot; from the database.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel className="rounded-xl! border-white/20! bg-white/20! backdrop-blur-sm! text-(--ink)!">Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDelete(item._id)}
-                                  className="rounded-xl! bg-red-600! hover:bg-red-700! border-none!"
-                                >
-                                  Delete Feedback
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                        </td>
+                        <td className="py-6 pr-5 align-top hidden md:table-cell">
+                          <div className="flex flex-col items-start gap-2">
+                            <span className="badge badge-neutral bg-gray-50!">{item.category}</span>
+                            {reanalyzeStateById[item._id] === "running" ? (
+                              <span className="badge badge-warning">Rescanning...</span>
+                            ) : reanalyzeStateById[item._id] === "failed" ? (
+                              <span className="badge badge-neutral">AI failed</span>
+                            ) : (
+                              <span
+                                className={`badge ${item.ai_sentiment === "Positive" ? "badge-positive" :
+                                  item.ai_sentiment === "Negative" ? "badge-negative" :
+                                    "badge-neutral"
+                                  }`}
+                              >
+                                {item.ai_sentiment ?? "Analyzing..."}
+                              </span>
+                            )}
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap mt-1">
+                              <span className={`h-2 w-2 rounded-full ${(item.ai_priority ?? 0) > 7 ? "bg-red-500" :
+                                (item.ai_priority ?? 0) > 4 ? "bg-amber-500" :
+                                  "bg-emerald-500"
+                                }`} />
+                              <span className="text-[10px] uppercase tracking-wider font-bold text-(--ink)">
+                                Priority {item.ai_priority ?? "-"}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-6 pr-5 align-top">
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Select
+                              className="bg-white/50! font-semibold text-xs py-2 px-3 h-auto min-w-[130px] rounded-xl!"
+                              options={statuses.filter((s) => s !== "All").map((s) => ({ label: s, value: s }))}
+                              value={item.status}
+                              onChange={(val) =>
+                                handleStatusChange(item, val as FeedbackStatus)
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td className="py-6 pr-6 align-top hidden md:table-cell text-right">
+                          <div className="flex items-center justify-end gap-3" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={reanalyzeStateById[item._id] === "running"}
+                              onClick={() => handleReanalyze(item)}
+                            >
+                              {reanalyzeStateById[item._id] === "running"
+                                ? "Rescanning..."
+                                : reanalyzeStateById[item._id] === "failed"
+                                  ? "Retry AI"
+                                  : "Rescan"}
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="danger" size="sm">
+                                  Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="rounded-4xl!">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-(--muted-strong) font-medium opacity-80!">
+                                    This action cannot be undone. This will permanently delete the feedback entry
+                                    &quot;{item.title}&quot; from the database.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel className="rounded-xl! border-white/20! bg-white/20! backdrop-blur-sm! text-(--ink)!">Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(item._id)}
+                                    className="rounded-xl! bg-red-600! hover:bg-red-700! border-none!"
+                                  >
+                                    Delete Feedback
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="py-20 text-center">
+                        <div className="flex flex-col items-center gap-4">
+                          <div className="h-16 w-16 items-center justify-center rounded-full bg-gray-50 flex">
+                            <span className="text-2xl">📋</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-base font-bold text-(--ink)">
+                              {filters.search !== "" || activeFilterCount > 0
+                                ? "No matching feedback found"
+                                : "No feedback received yet"}
+                            </p>
+                            <p className="text-sm text-(--muted-strong) max-w-[280px] mx-auto">
+                              {filters.search !== "" || activeFilterCount > 0
+                                ? "Try adjusting your search terms or filters to find what you're looking for."
+                                : "When users submit feedback, it will appear here."}
+                            </p>
+                          </div>
+                          {(filters.search !== "" || activeFilterCount > 0) && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="mt-2"
+                              onClick={handleClearFilters}
+                            >
+                              Clear all filters
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
