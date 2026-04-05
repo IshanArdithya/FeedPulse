@@ -119,4 +119,13 @@ docker compose up --build
 
 ## Screenshots
 
+### Landing Page
+![FeedPulse Landing Page](docs/screenshots/landing.png)
+
+### Admin Portal
+![FeedPulse Login Page](docs/screenshots/admin-login.png)
+
+### Admin Dashboard
+![FeedPulse Dashboard](docs/screenshots/admin-dashboard.png)
+
 
