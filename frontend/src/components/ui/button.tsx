@@ -38,7 +38,10 @@ export function Button({
   const finalClassName = `${baseStyle} ${variants[variant]} ${sizes[size]} ${className}`;
 
   return (
-    <Component className={finalClassName.trim()} {...(props as any)}>
+    <Component
+      className={finalClassName.trim()}
+      {...(props as ButtonHTMLAttributes<HTMLButtonElement>)}
+    >
       {children}
     </Component>
   );

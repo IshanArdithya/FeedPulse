@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Filter } from "lucide-react";
 import {
@@ -21,10 +21,6 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
-  DialogClose,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogFooter,
@@ -85,10 +81,13 @@ export function DashboardClient() {
   const [error, setError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
+  const [reanalyzeStateById, setReanalyzeStateById] = useState<
+    Record<string, "running" | "failed">
+  >({});
+  const hasLoadedFeedbackRef = useRef(false);
 
   const [filters, setFilters] = useState({
     page: Number(searchParams.get("page")) || defaultFilters.page,
@@ -143,9 +142,7 @@ export function DashboardClient() {
 
     async function loadFeedback() {
       const currentToken = token as string;
-      if (!feedbackData) {
-        setIsLoading(true);
-      } else {
+      if (hasLoadedFeedbackRef.current) {
         setIsRefreshing(true);
       }
       setError(null);
@@ -163,6 +160,7 @@ export function DashboardClient() {
 
         const feedbackResponse = await getFeedbackList(currentToken, query);
         setFeedbackData(feedbackResponse.data);
+        hasLoadedFeedbackRef.current = true;
       } catch (loadError) {
         const message =
           loadError instanceof Error
@@ -175,7 +173,6 @@ export function DashboardClient() {
           router.replace("/admin");
         }
       } finally {
-        setIsLoading(false);
         setIsRefreshing(false);
       }
     }
@@ -188,26 +185,14 @@ export function DashboardClient() {
       return;
     }
 
-    let pollingTimeout: ReturnType<typeof setTimeout> | undefined;
-
     async function fetchSummary() {
       const currentToken = token as string;
       setIsSummaryLoading(true);
       setSummaryError(null);
 
       try {
-        const summaryData = await loadSummary(currentToken);
-
-        if (summaryData.isRefreshing) {
-          pollingTimeout = setTimeout(() => {
-            void fetchSummary();
-          }, 2500);
-        }
-        if (!summaryData.isRefreshing) {
-          toast.success("Intelligence Summary updated");
-        }
+        await loadSummary(currentToken);
       } catch (loadError) {
-        toast.error("Summary refresh failed");
         setSummary(null);
         setSummaryError(
           loadError instanceof Error
@@ -220,12 +205,6 @@ export function DashboardClient() {
     }
 
     void fetchSummary();
-
-    return () => {
-      if (pollingTimeout) {
-        clearTimeout(pollingTimeout);
-      }
-    };
   }, [token]);
 
   async function handleStatusChange(
@@ -271,13 +250,18 @@ export function DashboardClient() {
           : current,
       );
       toast.success("Feedback deleted successfully");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete feedback");
     }
   }
 
   async function handleReanalyze(item: FeedbackItem) {
     if (!token) return;
+
+    setReanalyzeStateById((current) => ({
+      ...current,
+      [item._id]: "running",
+    }));
 
     try {
       const response = await reanalyzeFeedback(token, item._id);
@@ -291,14 +275,21 @@ export function DashboardClient() {
           }
           : current,
       );
-      toast.success("AI Analysis completed");
-    } catch (reanalyzeError) {
-      toast.error("AI Analysis failed");
-      setError(
-        reanalyzeError instanceof Error
-          ? reanalyzeError.message
-          : "Re-analysis failed",
+      setSelectedFeedback((current) =>
+        current && current._id === item._id ? response.data : current,
       );
+      setReanalyzeStateById((current) => {
+        const next = { ...current };
+        delete next[item._id];
+        return next;
+      });
+      toast.success("AI Analysis completed");
+    } catch {
+      setReanalyzeStateById((current) => ({
+        ...current,
+        [item._id]: "failed",
+      }));
+      toast.error("AI Analysis failed");
     }
   }
 
@@ -316,19 +307,26 @@ export function DashboardClient() {
         toast.info(response.data.alreadyRefreshing ? "Analysis already in progress..." : "Intelligence Summary scan started...");
         setIsSummaryLoading(false);
 
+        const poll = async () => {
+          const nextSummary = await loadSummary(token);
+
+          if (nextSummary.isRefreshing) {
+            setTimeout(() => {
+              void poll();
+            }, 2500);
+            return;
+          }
+
+          if (nextSummary.lastRefreshStatus === "success") {
+            toast.success("Intelligence Summary updated");
+          } else if (nextSummary.lastRefreshStatus === "failed") {
+            toast.error("Summary refresh failed");
+          }
+        };
+
         const summaryData = await loadSummary(token);
 
         if (summaryData.isRefreshing) {
-          const poll = async () => {
-            const nextSummary = await loadSummary(token);
-
-            if (nextSummary.isRefreshing) {
-              setTimeout(() => {
-                void poll();
-              }, 2500);
-            }
-          };
-
           setTimeout(() => {
             void poll();
           }, 2500);
@@ -401,7 +399,7 @@ export function DashboardClient() {
             value={String(feedbackData.stats.averagePriority)}
           />
           <StatCard
-            label="Strongest theme"
+            label="Most common tag"
             value={feedbackData.stats.mostCommonTag}
           />
         </section>
@@ -431,14 +429,14 @@ export function DashboardClient() {
                   </span>
                 )}
                 {summary.isStale && !summary.isRefreshing && (
-                  <span className="badge badge-neutral">Stale</span>
+                  <span className="badge badge-neutral">Outdated</span>
                 )}
               </div>
             </div>
 
             <div className="max-w-4xl">
               <p className="text-lg leading-relaxed text-(--muted-strong) font-medium italic">
-                "{summary.summary || "A stored summary is not available yet."}"
+                &quot;{summary.summary || "A stored summary is not available yet."}&quot;
               </p>
             </div>
 
@@ -460,12 +458,14 @@ export function DashboardClient() {
                 ? "Couldn’t refresh, showing last available summary."
                 : summary.isRefreshing
                   ? "Updating summary in background..."
-                  : summary?.generatedAt
-                    ? `Summary generated ${new Intl.DateTimeFormat("en-US", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    }).format(new Date(summary.generatedAt))}`
-                    : "No data available."}
+                  : summary.isStale
+                    ? "This summary is outdated. You can refresh it manually when you want newer insights."
+                    : summary?.generatedAt
+                      ? `Summary generated ${new Intl.DateTimeFormat("en-US", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(summary.generatedAt))}`
+                      : "No data available."}
             </p>
             <Button
               variant="secondary"
@@ -653,14 +653,20 @@ export function DashboardClient() {
                       <td className="py-6 pr-5 align-top hidden md:table-cell">
                         <div className="flex flex-col items-start gap-2">
                           <span className="badge badge-neutral bg-gray-50!">{item.category}</span>
-                          <span
-                            className={`badge ${item.ai_sentiment === "Positive" ? "badge-positive" :
-                              item.ai_sentiment === "Negative" ? "badge-negative" :
-                                "badge-neutral"
-                              }`}
-                          >
-                            {item.ai_sentiment ?? "Analyzing..."}
-                          </span>
+                          {reanalyzeStateById[item._id] === "running" ? (
+                            <span className="badge badge-warning">Rescanning...</span>
+                          ) : reanalyzeStateById[item._id] === "failed" ? (
+                            <span className="badge badge-neutral">AI failed</span>
+                          ) : (
+                            <span
+                              className={`badge ${item.ai_sentiment === "Positive" ? "badge-positive" :
+                                item.ai_sentiment === "Negative" ? "badge-negative" :
+                                  "badge-neutral"
+                                }`}
+                            >
+                              {item.ai_sentiment ?? "Analyzing..."}
+                            </span>
+                          )}
                           <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap mt-1">
                             <span className={`h-2 w-2 rounded-full ${(item.ai_priority ?? 0) > 7 ? "bg-red-500" :
                               (item.ai_priority ?? 0) > 4 ? "bg-amber-500" :
@@ -689,9 +695,14 @@ export function DashboardClient() {
                           <Button
                             variant="secondary"
                             size="sm"
+                            disabled={reanalyzeStateById[item._id] === "running"}
                             onClick={() => handleReanalyze(item)}
                           >
-                            Rescan
+                            {reanalyzeStateById[item._id] === "running"
+                              ? "Rescanning..."
+                              : reanalyzeStateById[item._id] === "failed"
+                                ? "Retry AI"
+                                : "Rescan"}
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -704,7 +715,7 @@ export function DashboardClient() {
                                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                 <AlertDialogDescription className="text-(--muted-strong) font-medium opacity-80!">
                                   This action cannot be undone. This will permanently delete the feedback entry
-                                  "{item.title}" from the database.
+                                  &quot;{item.title}&quot; from the database.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -740,14 +751,20 @@ export function DashboardClient() {
                             <span className="badge badge-neutral bg-black! text-white! border-none!">{selectedFeedback.category}</span>
                           </div>
                           <div className="flex flex-wrap items-center gap-3">
-                            <span
-                              className={`badge ${selectedFeedback.ai_sentiment === "Positive" ? "badge-positive" :
-                                selectedFeedback.ai_sentiment === "Negative" ? "badge-negative" :
-                                  "badge-neutral"
-                                }`}
-                            >
-                              {selectedFeedback.ai_sentiment ?? "Analyzing..."}
-                            </span>
+                            {reanalyzeStateById[selectedFeedback._id] === "running" ? (
+                              <span className="badge badge-warning">Rescanning...</span>
+                            ) : reanalyzeStateById[selectedFeedback._id] === "failed" ? (
+                              <span className="badge badge-neutral">AI failed</span>
+                            ) : (
+                              <span
+                                className={`badge ${selectedFeedback.ai_sentiment === "Positive" ? "badge-positive" :
+                                  selectedFeedback.ai_sentiment === "Negative" ? "badge-negative" :
+                                    "badge-neutral"
+                                  }`}
+                              >
+                                {selectedFeedback.ai_sentiment ?? "Analyzing..."}
+                              </span>
+                            )}
                             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-gray-50 border border-(--line) whitespace-nowrap">
                               <span className={`h-2 w-2 rounded-full ${(selectedFeedback.ai_priority ?? 0) > 7 ? "bg-red-500" :
                                 (selectedFeedback.ai_priority ?? 0) > 4 ? "bg-amber-500" :
@@ -768,6 +785,18 @@ export function DashboardClient() {
                       </DialogHeader>
 
                       <div className="px-8 md:px-10 pb-8 pt-8 md:pt-0 space-y-8">
+                        {reanalyzeStateById[selectedFeedback._id] === "running" ? (
+                          <div className="notice">
+                            AI re-scan is in progress for this feedback. The card will update when the analysis finishes.
+                          </div>
+                        ) : null}
+
+                        {reanalyzeStateById[selectedFeedback._id] === "failed" ? (
+                          <div className="notice notice-error">
+                            AI re-scan failed for this feedback. You can retry when ready.
+                          </div>
+                        ) : null}
+
                         {selectedFeedback.ai_summary && (
                           <section className="space-y-3">
                             <p className="eyebrow text-black!">AI Intelligence Summary</p>
@@ -783,6 +812,26 @@ export function DashboardClient() {
                             {selectedFeedback.description}
                           </div>
                         </section>
+
+                        {(selectedFeedback.submitterName || selectedFeedback.submitterEmail) && (
+                          <section className="space-y-3">
+                            <p className="eyebrow text-black!">Submitter Information</p>
+                            <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+                              {selectedFeedback.submitterName && (
+                                <div className="space-y-0.5">
+                                  <p className="text-[10px] font-bold uppercase text-(--muted)">Name</p>
+                                  <p className="font-semibold text-(--ink)">{selectedFeedback.submitterName}</p>
+                                </div>
+                              )}
+                              {selectedFeedback.submitterEmail && (
+                                <div className="space-y-0.5">
+                                  <p className="text-[10px] font-bold uppercase text-(--muted)">Email Address</p>
+                                  <p className="font-semibold text-(--ink)">{selectedFeedback.submitterEmail}</p>
+                                </div>
+                              )}
+                            </div>
+                          </section>
+                        )}
 
                         <div className="pt-6 border-t border-(--line) flex flex-wrap items-center justify-between gap-6">
                           <div className="space-y-1.5">
@@ -802,9 +851,14 @@ export function DashboardClient() {
                             <Button
                               variant="secondary"
                               size="sm"
+                              disabled={reanalyzeStateById[selectedFeedback._id] === "running"}
                               onClick={() => handleReanalyze(selectedFeedback)}
                             >
-                              Rescan with AI
+                              {reanalyzeStateById[selectedFeedback._id] === "running"
+                                ? "Rescanning..."
+                                : reanalyzeStateById[selectedFeedback._id] === "failed"
+                                  ? "Retry AI Scan"
+                                  : "Rescan with AI"}
                             </Button>
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
@@ -817,7 +871,7 @@ export function DashboardClient() {
                                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                   <AlertDialogDescription className="text-(--muted-strong) font-medium opacity-80!">
                                     This action cannot be undone. This will permanently delete the feedback entry
-                                    "{selectedFeedback.title}" from the database.
+                                    &quot;{selectedFeedback.title}&quot; from the database.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>

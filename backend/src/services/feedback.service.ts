@@ -65,6 +65,7 @@ type FeedbackQuery = {
 const WEEKLY_SUMMARY_KEY = "last-7-days";
 const SUMMARY_STALE_AFTER_MS = 15 * 60 * 1000;
 const SUMMARY_REFRESH_COOLDOWN_MS = 60 * 1000;
+const SUMMARY_REFRESH_TIMEOUT_MS = 5 * 60 * 1000;
 
 type SummaryWindow = {
   periodStart: Date;
@@ -179,8 +180,12 @@ function isSameWindow(
   }
 
   return (
-    Math.abs(storedStart.getTime() - currentWindow.periodStart.getTime()) < 1000 &&
-    Math.abs(storedEnd.getTime() - currentWindow.periodEnd.getTime()) < 1000
+    storedStart.getUTCFullYear() === currentWindow.periodStart.getUTCFullYear() &&
+    storedStart.getUTCMonth() === currentWindow.periodStart.getUTCMonth() &&
+    storedStart.getUTCDate() === currentWindow.periodStart.getUTCDate() &&
+    storedEnd.getUTCFullYear() === currentWindow.periodEnd.getUTCFullYear() &&
+    storedEnd.getUTCMonth() === currentWindow.periodEnd.getUTCMonth() &&
+    storedEnd.getUTCDate() === currentWindow.periodEnd.getUTCDate()
   );
 }
 
@@ -231,28 +236,56 @@ async function tryStartSummaryRefresh(force = false) {
 
   const existing = await FeedbackSummaryModel.findOne({ key: WEEKLY_SUMMARY_KEY }).lean();
 
+  const hasTimedOutRefresh =
+    Boolean(existing?.refreshInProgress) &&
+    Boolean(existing?.lastRefreshAttemptAt) &&
+    now.getTime() - existing.lastRefreshAttemptAt.getTime() > SUMMARY_REFRESH_TIMEOUT_MS;
+
+  if (hasTimedOutRefresh) {
+    await FeedbackSummaryModel.findOneAndUpdate(
+      { key: WEEKLY_SUMMARY_KEY },
+      {
+        $set: {
+          refreshInProgress: false,
+          lastRefreshStatus: "failed",
+          lastRefreshError: "Summary refresh timed out.",
+        },
+      },
+    );
+  }
+
+  const effectiveExisting =
+    hasTimedOutRefresh && existing
+      ? {
+          ...existing,
+          refreshInProgress: false,
+          lastRefreshStatus: "failed" as const,
+          lastRefreshError: "Summary refresh timed out.",
+        }
+      : existing;
+
   if (
-    existing?.refreshInProgress
+    effectiveExisting?.refreshInProgress
   ) {
     return {
       started: false,
       alreadyRefreshing: true,
-      cooldownUntil: existing.lastRefreshAttemptAt
-        ? new Date(existing.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS)
+      cooldownUntil: effectiveExisting.lastRefreshAttemptAt
+        ? new Date(effectiveExisting.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS)
         : undefined,
     };
   }
 
   if (
     !force &&
-    existing?.lastRefreshAttemptAt &&
-    now.getTime() - existing.lastRefreshAttemptAt.getTime() < SUMMARY_REFRESH_COOLDOWN_MS
+    effectiveExisting?.lastRefreshAttemptAt &&
+    now.getTime() - effectiveExisting.lastRefreshAttemptAt.getTime() < SUMMARY_REFRESH_COOLDOWN_MS
   ) {
     return {
       started: false,
       alreadyRefreshing: false,
       cooldownUntil: new Date(
-        existing.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS,
+        effectiveExisting.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS,
       ),
     };
   }
@@ -290,9 +323,9 @@ async function tryStartSummaryRefresh(force = false) {
   if (!lock?.refreshInProgress) {
     return {
       started: false,
-      alreadyRefreshing: Boolean(existing?.refreshInProgress),
-      cooldownUntil: existing?.lastRefreshAttemptAt
-        ? new Date(existing.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS)
+      alreadyRefreshing: Boolean(effectiveExisting?.refreshInProgress),
+      cooldownUntil: effectiveExisting?.lastRefreshAttemptAt
+        ? new Date(effectiveExisting.lastRefreshAttemptAt.getTime() + SUMMARY_REFRESH_COOLDOWN_MS)
         : undefined,
     };
   }
@@ -348,18 +381,6 @@ async function performSummaryRefresh() {
       { upsert: true },
     );
   }
-}
-
-function launchSummaryRefresh(force = false) {
-  if (process.env.NODE_ENV === "test") {
-    return;
-  }
-
-  void tryStartSummaryRefresh(force).then((result) => {
-    if (result.started) {
-      void performSummaryRefresh();
-    }
-  });
 }
 
 async function getSummarySnapshot(): Promise<RecentFeedbackSnapshot> {
@@ -459,7 +480,11 @@ export async function getFeedbackSummary() {
     latestFeedbackAt: snapshot.latestFeedbackAt,
   });
   const isStale = !isMissing && !isFresh;
-  const isRefreshing = Boolean(storedSummary?.refreshInProgress);
+  const refreshTimedOut =
+    Boolean(storedSummary?.refreshInProgress) &&
+    Boolean(storedSummary?.lastRefreshAttemptAt) &&
+    Date.now() - storedSummary.lastRefreshAttemptAt.getTime() > SUMMARY_REFRESH_TIMEOUT_MS;
+  const isRefreshing = Boolean(storedSummary?.refreshInProgress) && !refreshTimedOut;
   const refreshRecommended = isMissing || isStale;
 
   const cooldownUntil = storedSummary?.lastRefreshAttemptAt
@@ -467,10 +492,6 @@ export async function getFeedbackSummary() {
     : null;
   const withinCooldown =
     cooldownUntil !== null && cooldownUntil.getTime() > Date.now();
-
-  if (refreshRecommended && !isRefreshing && !withinCooldown) {
-    launchSummaryRefresh(false);
-  }
 
   return {
     summary: storedSummary?.summary ?? "",
@@ -484,8 +505,12 @@ export async function getFeedbackSummary() {
     isStale,
     isRefreshing,
     refreshRecommended,
-    lastRefreshStatus: mapRefreshStatus(storedSummary?.lastRefreshStatus),
-    lastRefreshError: storedSummary?.lastRefreshError ?? null,
+    lastRefreshStatus: refreshTimedOut
+      ? "failed"
+      : mapRefreshStatus(storedSummary?.lastRefreshStatus),
+    lastRefreshError: refreshTimedOut
+      ? "Summary refresh timed out."
+      : storedSummary?.lastRefreshError ?? null,
     cooldownUntil: withinCooldown ? cooldownUntil : null,
   };
 }
