@@ -4,7 +4,7 @@ FeedPulse is an AI-powered internal product feedback platform built with Next.js
 
 ## Tech Stack
 
-- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
+- Frontend: Next.js, React, TypeScript, Tailwind CSS
 - Backend: Node.js, Express, TypeScript, Mongoose, JWT
 - Database: MongoDB
 - AI: Google Gemini API
