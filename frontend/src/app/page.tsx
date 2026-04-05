@@ -1,8 +1,13 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { FeedbackForm } from "@/components/feedback-form";
 import { Button } from "@/components/ui/button";
+import { TOKEN_NAME } from "@/lib/auth";
 
-export default function Home() {
+export default async function Home() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(TOKEN_NAME)?.value;
+
   return (
     <main className="min-h-screen bg-white px-5 py-5 md:px-8 md:py-8">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-10">
@@ -22,9 +27,9 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="secondary" size="sm" className="md:px-5" asChild>
-              <Link href="/admin">
-                Admin login
+            <Button variant="secondary" size="sm" className="md:px-5 whitespace-nowrap" asChild>
+              <Link href={token ? "/dashboard" : "/admin"}>
+                {token ? "Admin Dashboard" : "Admin login"}
               </Link>
             </Button>
           </div>
@@ -39,7 +44,7 @@ export default function Home() {
             Help us build a better product, together.
           </h1>
           <p className="subheading max-w-2xl mx-auto text-lg pt-2 md:pt-4">
-            Your feedback directly influences our roadmap. Tell us what's working, what's broken, and what you'd love to see next. We're all ears.
+            Your feedback directly influences our roadmap. Tell us what&apos;s working, what&apos;s broken, and what you&apos;d love to see next. We&apos;re all ears.
           </p>
         </section>
 

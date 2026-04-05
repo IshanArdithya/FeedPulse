@@ -1,4 +1,4 @@
-const TOKEN_NAME = "feedpulse_admin_token";
+export const TOKEN_NAME = "feedpulse_admin_token";
 
 export function getAdminToken() {
   if (typeof window === "undefined") return null;
